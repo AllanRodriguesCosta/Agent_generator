@@ -1,0 +1,9 @@
+[
+  { "id": "cafe-cerrado", "nome": "Café Cerrado Mineiro 250 g", "categoria": "Cafés", "preco": 42.9, "descricao": "Torra média, notas de chocolate e castanhas.", "imagem": "/img/cafe.svg" },
+  { "id": "cafe-mantiqueira", "nome": "Café Mantiqueira 250 g", "categoria": "Cafés", "preco": 54.9, "descricao": "Torra clara, floral e frutado.", "imagem": "/img/cafe.svg" },
+  { "id": "cafe-parana", "nome": "Café Norte Pioneiro 500 g", "categoria": "Cafés", "preco": 69.9, "descricao": "Torra média, caramelo e baixa acidez.", "imagem": "/img/cafe.svg" },
+  { "id": "prensa", "nome": "Prensa francesa 600 ml", "categoria": "Métodos de preparo", "preco": 129.0, "descricao": "Vidro e aço inox, para 4 xícaras." },
+  { "id": "v60", "nome": "Coador V60 cerâmica", "categoria": "Métodos de preparo", "preco": 149.0, "descricao": "Para café coado, com 40 filtros." },
+  { "id": "moedor", "nome": "Moedor manual de aço", "categoria": "Acessórios", "preco": 219.0, "descricao": "Mó cônica, regulagem de moagem." },
+  { "id": "caneca", "nome": "Caneca Aurora 300 ml", "categoria": "Acessórios", "preco": 39.9, "descricao": "Cerâmica esmaltada." }
+]

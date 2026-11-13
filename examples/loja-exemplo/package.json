@@ -1,0 +1,1 @@
+{ "name": "cafe-aurora", "version": "1.0.0", "description": "Site da cafeteria Café Aurora", "type": "module", "dependencies": { "express": "^5.1.0" } }
