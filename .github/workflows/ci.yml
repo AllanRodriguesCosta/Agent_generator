@@ -31,3 +31,51 @@ jobs:
         run: |
           npm run demo
           node bin/agent-generator.js conversar .demo/cafe-aurora "oi" "quero um café até 50 reais"
+
+  # Gera o executável de verdade em cada sistema e roda ele dentro de uma cópia do site de exemplo,
+  # do jeito que a pessoa usaria: o arquivo na pasta raiz do projeto, sem argumentos.
+  executavel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Gerar o executável
+        run: node scripts/build-exe.js
+      - name: Rodar o executável na pasta raiz de um site
+        shell: bash
+        run: |
+          SITE="$RUNNER_TEMP/site com espaço"
+          mkdir -p "$SITE"
+          cp -R examples/loja-exemplo/. "$SITE/"
+          rm -rf "$SITE/agente" "$SITE/agente-gerador"
+          case "$RUNNER_OS" in Windows) EXE=agente-gerador-windows.exe ;; macOS) EXE=agente-gerador-macos ;; *) EXE=agente-gerador-linux ;; esac
+          cp "dist/$EXE" "$SITE/"
+          cd "$SITE"
+          "./$EXE" --sim --sem-pausa > saida.txt 2>&1 || { cat saida.txt; exit 1; }
+          cat saida.txt
+          test -f agente/conhecimento/faq.json
+          test -f agente-gerador/backup/html/index.html
+          grep -q "agente: agent-generator" index.html
+          grep -q "Acerto da base" agente-gerador/RESUMO.txt
+          "./$EXE" conversar . "oi" "qual o horario" > conversa.txt 2>&1 || { cat conversa.txt; exit 1; }
+          cat conversa.txt
+          grep -q "Café Aurora" conversa.txt
+          "./$EXE" ajuda > ajuda.txt
+          grep -q "assistente" ajuda.txt
+      - name: Diagnóstico (só em caso de falha)
+        if: failure()
+        shell: bash
+        run: |
+          SITE="$RUNNER_TEMP/site com espaço"
+          ls -la "$SITE" dist || true
+          diag=$( { cat "$SITE/saida.txt" "$SITE/conversa.txt" "$SITE/ajuda.txt"; ls -la "$SITE"; } 2>&1 | tail -c 5000 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=diagnostico::$diag"

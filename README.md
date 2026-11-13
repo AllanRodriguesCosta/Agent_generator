@@ -20,7 +20,17 @@ servir a qualquer projeto.
 
 <p align="center"><img src="docs/img/widget-desktop.png" alt="Widget do agente aberto no site de exemplo, respondendo sobre contato com botões de WhatsApp e página de contato" width="640"> <img src="docs/img/widget-celular-escuro.png" alt="O mesmo widget no celular, em tema escuro" width="200"></p>
 
-## Em 1 minuto
+## Jeito mais fácil: executável (sem instalar nada)
+
+1. Baixe o executável do seu sistema na página **Releases** (Windows `.exe`, Linux ou macOS).
+2. Coloque o arquivo na **pasta raiz do seu site** (onde fica o `index.html` ou o `package.json`).
+3. Dê dois cliques e responda sim/não. Ele faz o raio X, cria a base, instala o agente, liga o
+   widget nas páginas (guardando cópia dos originais), mostra o acerto e abre o site para testar.
+
+Detalhes, avisos do Windows/macOS e o que ele altera: [docs/EXECUTAVEL.md](docs/EXECUTAVEL.md).
+Quem já tem Node e Git pode usar o lançador leve da pasta [`lancadores/`](lancadores).
+
+## Em 1 minuto (com Node)
 
 Requisito: [Node.js](https://nodejs.org) 20 ou mais novo.
 
@@ -69,6 +79,7 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 
 | Comando | O que faz |
 | --- | --- |
+| `assistente [pasta]` | Guiado com perguntas sim/não, do raio X ao teste no navegador (é o que o executável roda). `--sim` aceita os padrões |
 | `criar <pasta>` | Tudo de uma vez: analisar, gerar, instalar e avaliar |
 | `analisar <pasta>` | Só o raio X (`agente-gerador/relatorio.json`) |
 | `gerar <pasta>` | Base de conhecimento a partir do relatório (não sobrescreve sem `--forcar`) |
@@ -96,10 +107,14 @@ Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`
   rota da API que lista os itens (o raio X sugere quando encontra uma).
 - Português do Brasil.
 
+Próximas melhorias planejadas (raio X do site rodando, entidades, conversa em etapas, ações no
+site, aprendizado com o uso, IA só como plano B): [docs/MELHORIAS.md](docs/MELHORIAS.md).
+
 ## Desenvolvimento
 
 ```bash
-npm test     # node --test, sem dependências
+npm test            # node --test, sem dependências
+npm run build:exe   # gera dist/agente-gerador-<sistema> para o sistema atual (Node 22.12+)
 ```
 
 Sem dependências de produção. Licença MIT.

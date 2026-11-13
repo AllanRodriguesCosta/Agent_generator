@@ -2,7 +2,7 @@
 // pública do site e mostra (ou insere, se pedido) a linha que liga o widget nas páginas.
 // A base já existente nunca é sobrescrita sem --forcar: ela pode ter sido editada à mão.
 import { mkdir, readFile, writeFile, copyFile, access, readdir } from "node:fs/promises";
-import { join, resolve, relative } from "node:path";
+import { join, resolve, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -110,7 +110,8 @@ export async function entryPages(projectDir) {
   return found;
 }
 
-export async function injectTags(projectDir, publicPath) {
+// backupDir (opcional): guarda uma cópia de cada HTML antes de alterar.
+export async function injectTags(projectDir, publicPath, { backupDir } = {}) {
   const changed = [];
   const skipped = [];
   for (const file of await entryPages(projectDir)) {
@@ -121,6 +122,11 @@ export async function injectTags(projectDir, publicPath) {
     }
     const tags = `${MARKER}\n<link rel="stylesheet" href="${publicPath}widget.css">\n<script type="module" src="${publicPath}widget.js"></script>\n`;
     const next = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${tags}</body>`) : `${html}\n${tags}`;
+    if (backupDir) {
+      const copy = join(backupDir, relative(resolve(projectDir), file));
+      await mkdir(dirname(copy), { recursive: true });
+      await writeFile(copy, html);
+    }
     await writeFile(file, next);
     changed.push(file);
   }

@@ -1,0 +1,68 @@
+name: Publicar executáveis
+
+# Cria uma versão (Release) com os executáveis para Windows, Linux e macOS.
+# Dispara com uma tag v* (ex.: v0.2.0) ou manualmente em Actions > "Publicar executáveis" > Run workflow.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Versão a publicar (ex.: v0.2.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: agente-gerador-windows.exe
+          - os: ubuntu-latest
+            name: agente-gerador-linux
+          - os: macos-latest
+            name: agente-gerador-macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npm test
+      - run: node scripts/build-exe.js
+      - name: Renomear para o sistema
+        shell: bash
+        run: |
+          mkdir -p saida
+          cp "dist/${{ matrix.name }}" "saida/"
+          cp lancadores/agente-gerador.cmd lancadores/agente-gerador.sh saida/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: saida/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: arquivos
+          merge-multiple: true
+      - name: Criar a Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ls -la arquivos
+          gh release create "$TAG" arquivos/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Agent Generator $TAG" \
+            --notes "Baixe o executável do seu sistema, coloque na pasta raiz do seu site e dê dois cliques. Detalhes: docs/EXECUTAVEL.md."

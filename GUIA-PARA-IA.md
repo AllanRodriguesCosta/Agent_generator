@@ -24,6 +24,9 @@ Variáveis: `AG` = pasta deste repositório; `PROJ` = pasta do projeto da pessoa
 node -v                                   # precisa ser >= 20
 # 1. Criar tudo (raio X, base, instalação, avaliação). --inserir liga o widget nos HTML de entrada.
 node $AG/bin/agent-generator.js criar $PROJ --inserir --json
+# (alternativa: o fluxo do executável sem perguntas, que também guarda cópia dos HTML alterados
+#  em agente-gerador/backup/html e escreve agente-gerador/RESUMO.txt)
+# node $AG/bin/agent-generator.js assistente $PROJ --sim --sem-pausa --json
 ```
 
 Leia do JSON: `relatorio` (quantas páginas/FAQ/itens), `destino`, `snippet`, `inserido.changed`,

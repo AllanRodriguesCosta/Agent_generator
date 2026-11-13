@@ -11,11 +11,12 @@ import { createInterface } from "node:readline/promises";
 import { scanProject } from "../src/scanner/index.js";
 import { generateKnowledge } from "../src/generator/index.js";
 import { buildPrompt, parseAiAnswer, mergeAi, askGemini } from "../src/generator/ai.js";
-import { install, detectTarget, injectTags, readKnowledge, writeKnowledge, snippetFor } from "../src/installer/index.js";
+import { install, detectTarget, injectTags, readKnowledge, writeKnowledge, snippetFor, entryPages } from "../src/installer/index.js";
+import { runAssistant } from "../src/cli/assistente.js";
 import { evaluateKnowledge, evaluationText } from "../src/eval/index.js";
 import { createAgent } from "../src/agent/agent.js";
 
-const ALIASES = { create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
+const ALIASES = { auto: "assistente", wizard: "assistente", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
 const WORK = "agente-gerador";
 
 export function parseArgs(argv) {
@@ -37,6 +38,9 @@ const HELP = `agent-generator — cria um agente (chatbot) para o seu site a par
 Uso: agent-generator <comando> <pasta-do-projeto> [opções]
 
 Comandos:
+  assistente [pasta]       Guiado, com perguntas de sim/não: raio X, base, instalação, widget nas
+                           páginas, avaliação e teste no navegador. É o que o executável faz
+                           com duplo clique. Sem pasta, usa a pasta atual.
   criar <pasta>            Tudo de uma vez: analisar + gerar + instalar + avaliar
   analisar <pasta>         Raio X do projeto (agente-gerador/relatorio.json)
   gerar <pasta>            Cria a base de conhecimento a partir do relatório
@@ -56,6 +60,8 @@ Opções:
   --json              Saída em JSON (para IAs de código e scripts)
   --frases <arquivo>  Avaliar também frases próprias: [{"frase": "...", "espera": "faq:id"}]
   --porta <n>         Porta do comando servir (padrão 5173)
+  --sim               (assistente) Responde o padrão a todas as perguntas, sem abrir navegador
+  --sem-pausa         (assistente) Não espera Enter no final
 `;
 
 async function readJson(file) {
@@ -68,6 +74,9 @@ async function context(projectArg, flags) {
   const info = await stat(project).catch(() => null);
   if (!info?.isDirectory()) throw new Error(`Pasta não encontrada: ${project}`);
   const work = join(project, WORK);
+  const workInfo = await stat(work).catch(() => null);
+  if (workInfo && !workInfo.isDirectory())
+    throw new Error(`Existe um arquivo chamado "${WORK}" na pasta do projeto, e esse nome é usado pela pasta de trabalho. Renomeie o arquivo (ex.: agente-gerador-linux) e rode de novo.`);
   let config = {};
   try {
     config = await readJson(join(work, "config.json"));
@@ -151,7 +160,7 @@ async function cmdAvaliar(ctx) {
   return result;
 }
 
-async function cmdConversar(ctx, phrases) {
+async function cmdConversar(ctx, phrases, sharedRl = null) {
   const { raw } = await currentKnowledge(ctx);
   const agent = createAgent(raw);
   const show = (r) => {
@@ -174,7 +183,7 @@ async function cmdConversar(ctx, phrases) {
     return out;
   }
   console.log(`${agent.saudacao().texto}\n(escreva "sair" para terminar)\n`);
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const rl = sharedRl || createInterface({ input: process.stdin, output: process.stdout });
   for (;;) {
     const line = await rl.question("você: ");
     if (/^(sair|exit|quit)$/i.test(line.trim())) break;
@@ -182,7 +191,7 @@ async function cmdConversar(ctx, phrases) {
     contexto = r.contexto;
     console.log(`${show(r)}\n`);
   }
-  rl.close();
+  if (!sharedRl) rl.close();
   return null;
 }
 
@@ -193,6 +202,72 @@ async function cmdAplicarIa(ctx, file, text) {
   const bkp = await backup(ctx, t.dir);
   await writeKnowledge(t.dir, knowledge, { force: true });
   return { changes, problems, backup: bkp, avaliacao: evaluateKnowledge(knowledge).geral };
+}
+
+async function cmdGemini(ctx) {
+  const { raw, report } = await currentKnowledge(ctx);
+  const prompt = buildPrompt(report, createAgent(raw).knowledge);
+  const text = await askGemini(prompt, { apiKey: process.env.GEMINI_API_KEY, model: ctx.flags.modelo || process.env.GEMINI_MODEL || undefined });
+  await writeFile(join(ctx.work, "resposta-gemini.json"), text);
+  return cmdAplicarIa(ctx, null, text);
+}
+
+// Sobe o servidor estático na porta pedida ou na próxima livre (até +10).
+async function listenFree(server, port) {
+  for (let p = port; p <= port + 10; p++) {
+    const ok = await new Promise((done) => {
+      server.once("error", () => done(false));
+      server.listen(p, "127.0.0.1", () => done(true));
+    });
+    if (ok) return p;
+  }
+  throw new Error(`Portas ${port} a ${port + 10} ocupadas. Use --porta.`);
+}
+
+async function cmdAssistente(ctx) {
+  const interactive = Boolean(process.stdin.isTTY) && !ctx.flags.sim;
+  const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+  const io = {
+    print: (text) => console.log(text),
+    async ask(question, fallback, { soInterativo = false } = {}) {
+      const hint = fallback ? "[S/n]" : "[s/N]";
+      if (!rl) {
+        const value = soInterativo ? false : fallback;
+        console.log(`${question} ${hint} ${value ? "sim" : "não"} (automático)`);
+        return value;
+      }
+      const answer = (await rl.question(`${question} ${hint} `)).trim().toLowerCase();
+      return answer ? /^(s|sim|y|yes)/.test(answer) : fallback;
+    },
+    async pause() {
+      if (rl && !ctx.flags["sem-pausa"]) await rl.question("\nPressione Enter para fechar...");
+      rl?.close();
+    },
+  };
+  const steps = {
+    analisar: async () => (await cmdAnalisar(ctx)).report,
+    target: (report) => target(ctx, report.projeto.stack),
+    gerar: ({ force }) => {
+      ctx.flags.forcar = force;
+      return cmdGerar(ctx);
+    },
+    instalar: ({ report }) => {
+      ctx.flags.inserir = false;
+      return cmdInstalar(ctx, { report });
+    },
+    entryPages: () => entryPages(ctx.project),
+    inject: (backupDir, publicPath) => injectTags(ctx.project, publicPath, { backupDir }),
+    avaliar: () => cmdAvaliar(ctx),
+    gemini: () => cmdGemini(ctx),
+    conversar: () => cmdConversar(ctx, [], rl),
+    async servir(root) {
+      const port = await listenFree(staticServer(root), Number(ctx.flags.porta) || 5173);
+      return `http://localhost:${port}/`;
+    },
+  };
+  const result = await runAssistant({ project: ctx.project, work: ctx.work, io, steps, hasGemini: Boolean(process.env.GEMINI_API_KEY) });
+  if (result.status === "servindo") rl?.close();
+  return result;
 }
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon", ".txt": "text/plain; charset=utf-8" };
@@ -235,8 +310,13 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(HELP);
     return 0;
   }
-  const ctx = await context(_[1], flags);
+  const ctx = await context(command === "assistente" ? _[1] || process.cwd() : _[1], flags);
   switch (command) {
+    case "assistente": {
+      const r = await cmdAssistente(ctx);
+      if (flags.json) console.log(JSON.stringify(r, null, 2));
+      return r.status === "servindo" ? null : 0;
+    }
     case "analisar": {
       const { report, arquivo } = await cmdAnalisar(ctx);
       print(ctx, report, `${summary(report)}\nRelatório: ${arquivo}${notesText(report.avisos)}`);
@@ -295,11 +375,7 @@ export async function main(argv = process.argv.slice(2)) {
       return 0;
     }
     case "gemini": {
-      const { raw, report } = await currentKnowledge(ctx);
-      const prompt = buildPrompt(report, createAgent(raw).knowledge);
-      const text = await askGemini(prompt, { apiKey: process.env.GEMINI_API_KEY, model: flags.modelo || process.env.GEMINI_MODEL || undefined });
-      await writeFile(join(ctx.work, "resposta-gemini.json"), text);
-      const r = await cmdAplicarIa(ctx, null, text);
+      const r = await cmdGemini(ctx);
       print(ctx, r, `Gemini aplicado: +${r.changes.exemplos} exemplos, ${r.changes.intencoesNovas.length} intenções novas, +${r.changes.faqNovas} perguntas. Acerto: ${r.avaliacao}%.${notesText(r.changes.ignorados)}`);
       return 0;
     }
