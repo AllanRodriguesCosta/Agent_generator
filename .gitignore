@@ -8,3 +8,6 @@ Thumbs.db
 .demo/
 examples/loja-exemplo/agente/
 examples/loja-exemplo/agente-gerador/
+
+# Gerado por scripts/build-exe.js
+dist/

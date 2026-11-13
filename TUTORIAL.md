@@ -3,6 +3,11 @@
 Este guia é para quem não quer programar. Você vai rodar alguns comandos, conferir o resultado e
 ajustar textos em arquivos simples.
 
+> **Sem instalar nada:** baixe o executável na página Releases, coloque na pasta raiz do seu site
+> e dê dois cliques. Ele faz os passos 2 e 3 deste tutorial sozinho, perguntando sim/não. Veja
+> [docs/EXECUTAVEL.md](docs/EXECUTAVEL.md). O resto do tutorial (ajustar a base, IA, publicar)
+> vale igual.
+
 ## 1. O que você precisa
 
 - **Node.js 20 ou mais novo** ([nodejs.org](https://nodejs.org), versão LTS). Para conferir, abra o

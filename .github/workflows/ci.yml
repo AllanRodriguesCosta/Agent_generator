@@ -31,3 +31,40 @@ jobs:
         run: |
           npm run demo
           node bin/agent-generator.js conversar .demo/cafe-aurora "oi" "quero um café até 50 reais"
+
+  # Gera o executável de verdade em cada sistema e roda ele dentro de uma cópia do site de exemplo,
+  # do jeito que a pessoa usaria: o arquivo na pasta raiz do projeto, sem argumentos.
+  executavel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Gerar o executável
+        run: node scripts/build-exe.js
+      - name: Rodar o executável na pasta raiz de um site
+        shell: bash
+        run: |
+          SITE="$RUNNER_TEMP/site com espaço"
+          mkdir -p "$SITE"
+          cp -R examples/loja-exemplo/. "$SITE/"
+          rm -rf "$SITE/agente" "$SITE/agente-gerador"
+          EXE=agente-gerador; if [ "$RUNNER_OS" = "Windows" ]; then EXE=agente-gerador.exe; fi
+          cp "dist/$EXE" "$SITE/"
+          cd "$SITE"
+          "./$EXE" --sim --sem-pausa | tee saida.txt
+          test -f agente/conhecimento/faq.json
+          test -f agente-gerador/backup/html/index.html
+          grep -q "agente: agent-generator" index.html
+          grep -q "Acerto da base" agente-gerador/RESUMO.txt
+          "./$EXE" conversar . "oi" "qual o horario" | tee conversa.txt
+          grep -q "Café Aurora" conversa.txt
+          "./$EXE" ajuda | grep -q "assistente"
