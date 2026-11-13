@@ -32,6 +32,13 @@ const joinList = (items) => (items.length < 2 ? items.join("") : `${items.slice(
 const pathOnly = (url) => String(url || "").split(/[?#]/)[0] || "/";
 
 export function summarize({ events = [], exchanges = [] }) {
+  // Versão 0.5: chaves do navegador que guardam o token de login (só nomes).
+  const tokens = [];
+  for (const e of events)
+    if (e.tipo === "armazenamento" && Array.isArray(e.chaves))
+      for (const c of e.chaves)
+        if (c && ["localStorage", "sessionStorage"].includes(c.onde) && /^[\w.:-]{1,80}$/.test(c.chave || "") && /^[\w.]{0,40}$/.test(c.campo || "") && !tokens.some((t) => t.onde === c.onde && t.chave === c.chave && t.campo === (c.campo || "")))
+          tokens.push({ onde: c.onde, chave: c.chave, campo: c.campo || "" });
   const pages = new Map();
   const forms = new Map();
   const sequence = [];
@@ -92,7 +99,7 @@ export function summarize({ events = [], exchanges = [] }) {
     const fields = lookupFields(items[0]);
     const catalog = mapItems(items, x.caminho, {}, 2);
     if (listas.some((l) => l.caminho === x.caminho)) continue;
-    listas.push({ caminho: x.caminho, original: x.original, query: x.query, comSessao: x.comSessao, itens: items.length, status: Boolean(fields.status), campos: fields, catalogo: catalog ? { campos: catalog.campos, exemplo: catalog.itens.slice(0, 3).map((i) => i.nome) } : null, itensMapeados: catalog?.itens || [] });
+    listas.push({ caminho: x.caminho, original: x.original, query: x.query, comSessao: x.comSessao, autenticacao: x.autenticacao || "", itens: items.length, status: Boolean(fields.status), campos: fields, catalogo: catalog ? { campos: catalog.campos, exemplo: catalog.itens.slice(0, 3).map((i) => i.nome) } : null, itensMapeados: catalog?.itens || [] });
     if (x.query.length) {
       const s = searchFrom(`${x.original}?${new URLSearchParams(x.exemploQuery)}`);
       if (s && !buscas.some((b) => b.modelo === s.modelo)) buscas.push({ ...s, origem: "api" });
@@ -107,6 +114,7 @@ export function summarize({ events = [], exchanges = [] }) {
     listas,
     acoes,
     precisaLogin: needsLogin,
+    tokens,
   };
 }
 
@@ -186,6 +194,14 @@ export function applyObservation(base, obs) {
     });
     changes.dados.push(`${rotulo} (${l.original})`);
   }
+  // Versão 0.5: a conta usa token no navegador (Authorization: Bearer). O widget passa a ler o
+  // token da mesma chave que o site usa (só o nome da chave vai para a base, nunca o valor).
+  const bearer = obs.listas.some((l) => l.autenticacao === "bearer" && l.status);
+  if (bearer && obs.tokens?.length && !k.consultas.auth) {
+    const t = obs.tokens[0];
+    k.consultas.auth = { tipo: "bearer", onde: t.onde, chave: t.chave, ...(t.campo ? { campo: t.campo } : {}) };
+    changes.auth = `token em ${t.onde}["${t.chave}"]${t.campo ? `.${t.campo}` : ""}`;
+  }
   // Catálogo da API: só quando a base ainda não tem catálogo.
   const candidate = obs.listas.filter((l) => l.catalogo && !l.status && !l.caminho.includes(":id") && !/admin/i.test(l.caminho)).sort((a, b) => b.itens - a.itens)[0];
   if (candidate && !k.catalogo.itens?.length && !k.catalogo.url) {
@@ -217,6 +233,7 @@ export function observationText(obs, changes, { minutos } = {}) {
     ...changes.faq.map((f) => `- Pergunta nova: ${f}`),
     ...(changes.buscas.length ? [`- Busca do site: ${changes.buscas[0]} (o agente monta o link com o termo)`] : []),
     ...(changes.login ? [`- Página de login: ${changes.login}`] : []),
+    ...(changes.auth ? [`- Consultas com login por token: ${changes.auth}`] : []),
     ...changes.dados.map((d) => `- Consulta da conta: ${d}`),
     ...(changes.catalogo ? [`- Catálogo lido da API: ${changes.catalogo}${changes.linkModelo ? ` (link de cada item: ${changes.linkModelo})` : ""}`] : []),
     ...(Object.values(changes).every((v) => !v || (Array.isArray(v) && !v.length)) ? ["- Nada novo desta vez (a base já cobria o que foi visto)."] : []),

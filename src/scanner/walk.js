@@ -8,7 +8,7 @@ export const IGNORED_DIRS = new Set([
   "vendor", "venv", ".venv", "__pycache__", ".cache", ".turbo", ".vercel", ".idea", ".vscode", "target", "bin", "obj", "agente", "agente-gerador",
 ]);
 export const SECRET_FILE = /^(\.env(\..*)?|.*\.(pem|key|p12|pfx|crt)|id_rsa.*|.*secret.*|.*credenciais.*|.*credentials.*)$/i;
-export const TEXT_EXT = new Set([".html", ".htm", ".md", ".mdx", ".txt", ".json", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".astro", ".py", ".php", ".erb", ".ejs", ".hbs", ".njk", ".liquid", ".csv"]);
+export const TEXT_EXT = new Set([".html", ".htm", ".md", ".mdx", ".txt", ".json", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".astro", ".py", ".php", ".erb", ".ejs", ".hbs", ".njk", ".liquid", ".csv", ".xml"]);
 
 export async function listFiles(root, { maxFiles = 3000, maxBytes = 1_000_000 } = {}) {
   const files = [];

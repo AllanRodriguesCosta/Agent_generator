@@ -48,7 +48,7 @@ export function parseJson(buffer, type = "") {
 }
 
 // Uma chamada observada: método, caminho com :id, parâmetros de busca, status e amostra.
-export function exchange({ method, url, status, type, requestBody, responseBody, withSession, page }) {
+export function exchange({ method, url, status, type, requestBody, responseBody, withSession, auth = "", page }) {
   const u = new URL(url, "http://observado");
   const json = parseJson(responseBody, type);
   let sent;
@@ -66,6 +66,8 @@ export function exchange({ method, url, status, type, requestBody, responseBody,
     status,
     tipo: String(type || "").split(";")[0],
     comSessao: Boolean(withSession),
+    // Versão 0.5: como a sessão foi enviada ("cookie" ou "bearer"); nunca o valor.
+    autenticacao: auth,
     camposEnviados: keysOf(sent),
     resposta: json === undefined ? undefined : sanitize(json),
     pagina: page || "",

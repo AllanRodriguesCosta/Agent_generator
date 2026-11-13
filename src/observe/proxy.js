@@ -81,7 +81,7 @@ export function createObserver({ target, inject = { head: "", body: "" }, routes
       const body = await readBody(upstream, 8_000_000);
       if (isHtml) lastPage = new URL(req.url, "http://x").pathname;
       if (!isHtml)
-        push(exchanges, exchange({ method: req.method, url: req.url, status: upstream.statusCode, type, requestBody, responseBody: body, withSession: Boolean(req.headers.cookie || req.headers.authorization), page: lastPage }));
+        push(exchanges, exchange({ method: req.method, url: req.url, status: upstream.statusCode, type, requestBody, responseBody: body, withSession: Boolean(req.headers.cookie || req.headers.authorization), auth: /^bearer\s/i.test(req.headers.authorization || "") ? "bearer" : req.headers.cookie ? "cookie" : "", page: lastPage }));
       if (!isHtml) {
         res.writeHead(upstream.statusCode, outHeaders);
         return res.end(body);

@@ -31,7 +31,39 @@
     return clean((h && (h.textContent || h.getAttribute("aria-label"))) || document.title, 80);
   };
 
+  // Versão 0.5: sites que guardam o login no navegador (JWT no localStorage). Manda só o NOME da
+  // chave e do campo que parecem guardar um token, nunca o valor.
+  var JWT = /^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$/;
+  function tokenKeys() {
+    var found = [];
+    ["localStorage", "sessionStorage"].forEach(function (onde) {
+      var store;
+      try {
+        store = window[onde];
+      } catch {
+        return;
+      }
+      for (var i = 0; store && i < store.length && i < 200; i++) {
+        var chave = store.key(i);
+        var v = String(store.getItem(chave) || "").replace(/^"|"$/g, "");
+        if (JWT.test(v)) found.push({ onde: onde, chave: chave, campo: "" });
+        else if (/^\{/.test(v)) {
+          try {
+            var obj = JSON.parse(v);
+            ["token", "accessToken", "access_token", "jwt", "idToken"].forEach(function (campo) {
+              if (obj && typeof obj[campo] === "string" && JWT.test(obj[campo])) found.push({ onde: onde, chave: chave, campo: campo });
+            });
+          } catch {
+            /* não é JSON */
+          }
+        }
+      }
+    });
+    if (found.length) send({ tipo: "armazenamento", chaves: found.slice(0, 5) });
+  }
+
   function pageView() {
+    tokenKeys();
     var main = document.querySelector("main") || document.body;
     var heads = Array.prototype.slice.call(document.querySelectorAll("h1, h2, h3"), 0, 14).map(function (h) {
       return clean(h.textContent, 80);

@@ -73,3 +73,32 @@ export function describeLookup(cfg, resposta, agente = {}) {
   }
   return { texto, acoes: page };
 }
+
+// Versão 0.5: token de login guardado no navegador (sites que usam Authorization: Bearer).
+// auth: { tipo: "bearer", onde: "localStorage" | "sessionStorage", chave, campo? }.
+export function readToken(auth, storage = globalThis) {
+  if (auth?.tipo !== "bearer") return null;
+  let raw;
+  try {
+    raw = storage[auth.onde || "localStorage"]?.getItem(auth.chave);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  let value = raw;
+  if (auth.campo || /^[{"]/.test(raw)) {
+    try {
+      const parsed = JSON.parse(raw);
+      value = auth.campo ? auth.campo.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), parsed) : parsed;
+    } catch {
+      return null;
+    }
+  }
+  return typeof value === "string" && /^[\w.~+/=-]{8,4096}$/.test(value.trim()) ? value.trim() : null;
+}
+export function lookupHeaders(auth, storage) {
+  const headers = { accept: "application/json" };
+  const token = readToken(auth, storage);
+  if (token) headers.authorization = `Bearer ${token}`;
+  return headers;
+}

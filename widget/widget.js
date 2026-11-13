@@ -5,7 +5,7 @@
 // Configuração em conhecimento/agente.json. Opcional: window.AGENTE_CONFIG = { aberto: true }.
 import { createAgent } from "./nucleo/agent.js";
 import { mapItems } from "./nucleo/catalog-map.js";
-import { describeLookup } from "./nucleo/lookup.js";
+import { describeLookup, lookupHeaders } from "./nucleo/lookup.js";
 import { anonymize, isMiss } from "./nucleo/privacy.js";
 
 const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
@@ -201,7 +201,8 @@ export async function mount(options = {}) {
     if (r.consulta?.url) {
       let lookup;
       try {
-        const res = await fetch(new URL(r.consulta.url, location.href), { credentials: "same-origin", headers: { accept: "application/json" } });
+        // Cookie do próprio site ou, se a base pedir, o token que o site guarda no navegador.
+        const res = await fetch(new URL(r.consulta.url, location.href), { credentials: "same-origin", headers: lookupHeaders(r.consulta.auth) });
         lookup = describeLookup(r.consulta, { status: res.status, dados: res.ok ? await res.json().catch(() => null) : null }, agent.knowledge.agente);
       } catch {
         lookup = describeLookup(r.consulta, { status: 0 }, agent.knowledge.agente);

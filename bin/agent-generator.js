@@ -17,6 +17,7 @@ import { summarize, applyObservation, observationText } from "../src/observe/lea
 import { findUpstream, runSession } from "../src/observe/session.js";
 import { applyCorrection, trainingBase, trainingText } from "../src/train/apply.js";
 import { evaluateKnowledge, evaluationText } from "../src/eval/index.js";
+import { evaluationHtml } from "../src/eval/html.js";
 import { createAgent } from "../src/agent/agent.js";
 import { readMissFiles, groupMisses, suggestFor, learnText, correctionFor } from "../src/learn/misses.js";
 import { startEditor } from "../src/editor/server.js";
@@ -75,6 +76,8 @@ Opções:
   --forcar            Regera a base mesmo se já existir (a anterior vai para agente-gerador/backup)
   --json              Saída em JSON (para IAs de código e scripts)
   --frases <arquivo>  Avaliar também frases próprias: [{"frase": "...", "espera": "faq:id"}]
+  --variacoes         (avaliar) Testa também variações geradas: sem acento, erro de digitação, informal
+  --html              (avaliar) Grava agente-gerador/avaliacao.html (relatório para abrir no navegador)
   --porta <n>         Porta do comando servir (padrão 5173)
   --sim               (assistente) Responde o padrão a todas as perguntas, sem abrir navegador
   --sem-pausa         (assistente) Não espera Enter no final
@@ -176,8 +179,10 @@ async function currentKnowledge(ctx) {
 async function cmdAvaliar(ctx) {
   const { raw } = await currentKnowledge(ctx);
   const extra = ctx.flags.frases ? await readJson(resolve(ctx.flags.frases)) : [];
-  const result = evaluateKnowledge(raw, { extra });
+  const result = evaluateKnowledge(raw, { extra, variacoes: Boolean(ctx.flags.variacoes) });
   await writeFile(join(ctx.work, "avaliacao.txt"), `${evaluationText(result)}\n`);
+  // Versão 0.5: relatório em HTML (abre no navegador; bom para o portfólio).
+  if (ctx.flags.html) await writeFile(join(ctx.work, "avaliacao.html"), evaluationHtml(result, { site: raw.agente?.site || ctx.config.site || "o site" }));
   return result;
 }
 
