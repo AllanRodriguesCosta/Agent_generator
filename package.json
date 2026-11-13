@@ -1,0 +1,37 @@
+{
+  "name": "agent-generator",
+  "version": "0.1.0",
+  "description": "Faz o raio X de um projeto web e cria um agente (chatbot) personalizado para ele, sem custo e sem IA obrigatória.",
+  "type": "module",
+  "bin": {
+    "agent-generator": "bin/agent-generator.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "widget",
+    "templates",
+    "README.md",
+    "TUTORIAL.md",
+    "AGENTS.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "demo": "node scripts/demo.js",
+    "demo:servir": "node scripts/demo.js --servir"
+  },
+  "keywords": [
+    "chatbot",
+    "agente",
+    "nlp",
+    "pln",
+    "naive-bayes",
+    "widget",
+    "portugues"
+  ],
+  "license": "MIT"
+}
