@@ -18,7 +18,8 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
   "cor": "#6d28d9",
   "posicao": "direita",
   "moeda": "BRL",
-  "endpoint": ""
+  "endpoint": "",
+  "registro": ""
 }
 ```
 
@@ -26,6 +27,11 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
 - `cor`: hexadecimal de 6 dígitos. `posicao`: `"direita"` ou `"esquerda"`.
 - `endpoint`: vazio = o agente roda no navegador. Com `"/api/agente"`, o widget pergunta ao seu
   servidor (veja `agente/servidor.js`).
+- `registro` (0.4): para onde o widget manda as frases que não entendeu, ex.: `"/api/agente"` (o
+  `servidor.js` grava em `agente/faltas.jsonl`). Vazio = ficam só no navegador da pessoa
+  (`agente.faltas()` no console; `agente.exportarFaltas()` baixa o JSON para o comando `aprender`).
+  Antes de sair do navegador, e-mail, telefone, CPF/CNPJ, códigos e números longos viram
+  marcadores.
 - Nos textos, `{site}` e `{nome}` viram o nome do site e do assistente.
 
 ## intencoes.json
@@ -136,3 +142,15 @@ começos de palavra ("pag" → "pagamento") são aceitos.
   mais comuns (`status`, `situacao`, `createdAt`, `total`, `totalCents`...). Campo com `cents` no
   nome é dividido por 100.
 - A observação (`agent-generator observar`) preenche este arquivo sozinha.
+
+## Catálogo: entidades e memória (0.4)
+
+Nada novo para escrever: o agente tira do próprio `catalogo.json`
+- **categorias** (campo `categoria`), **cores** (no nome ou nas tags: "preto", "azul"...),
+  **marcas** (primeira palavra do nome repetida em 2+ itens, ou tag `marca:Nike`) e **tamanhos**
+  (tags `P`, `M`, `G`, `38`, `tamanho M`);
+- e guarda no contexto da conversa os filtros e os itens mostrados (`filtros`, `ultimos`).
+
+Assim funcionam "tem tênis preto da Nike até 300?", "e em azul?", "o mais barato",
+"compara os dois" e "me fala do segundo". Cor que nenhum item tem recebe "Não encontrei... Tenho em:
+preto, branco".

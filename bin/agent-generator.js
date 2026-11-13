@@ -18,6 +18,8 @@ import { findUpstream, runSession } from "../src/observe/session.js";
 import { applyCorrection, trainingBase, trainingText } from "../src/train/apply.js";
 import { evaluateKnowledge, evaluationText } from "../src/eval/index.js";
 import { createAgent } from "../src/agent/agent.js";
+import { readMissFiles, groupMisses, suggestFor, learnText, correctionFor } from "../src/learn/misses.js";
+import { startEditor } from "../src/editor/server.js";
 
 const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", auto: "assistente", wizard: "assistente", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
 const WORK = "agente-gerador";
@@ -29,7 +31,7 @@ export function parseArgs(argv) {
     if (a.startsWith("--")) {
       const [k, v] = a.slice(2).split("=");
       if (v !== undefined) out.flags[k] = v;
-      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos"].includes(k)) out.flags[k] = argv[++i];
+      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos", "arquivo"].includes(k)) out.flags[k] = argv[++i];
       else out.flags[k] = true;
     } else out._.push(a);
   }
@@ -60,6 +62,11 @@ Comandos:
   treinar [pasta]          Parte 2: o site abre com o agente em modo treino; você conversa com ele
                            e marca "Certo" ou "Corrigir" em cada resposta. A correção vai para a
                            base na hora (com backup), inclusive conversas em etapas.
+  aprender [pasta]         Agrupa as frases que o agente não entendeu no site (faltas.jsonl do
+                           modo servidor ou o faltas.json exportado no navegador) e sugere onde
+                           encaixar cada uma. Com --aplicar, pergunta grupo a grupo.
+  editar [pasta]           Abre o editor da base no navegador (perguntas, intenções, páginas e
+                           conversas em etapas), com teste do agente e acerto na hora.
   ajuda                    Esta mensagem
 
 Opções:
@@ -73,7 +80,9 @@ Opções:
   --sem-pausa         (assistente) Não espera Enter no final
   --url <endereço>    (observar/treinar) Site já rodando, ex.: http://localhost:3000
   --minutos <n>       (observar/treinar) Tempo máximo da sessão (padrão 5 e 30)
-  --sem-navegador     (observar/treinar) Não abre o navegador sozinho
+  --sem-navegador     (observar/treinar/editar) Não abre o navegador sozinho
+  --arquivo <arq>     (aprender) Arquivo com as frases (JSON ou JSON Lines)
+  --aplicar           (aprender) Aplica as sugestões, com confirmação (com --sim, só as seguras)
 `;
 
 async function readJson(file) {
@@ -329,6 +338,11 @@ async function cmdTreinar(ctx, io) {
   const antes = evaluateKnowledge(await readKnowledge(t.dir)).geral;
   const routes = {
     "treino/base": async () => trainingBase(createAgent(await readKnowledge(t.dir)).knowledge),
+    // Versão 0.4: frases não entendidas no site, agrupadas, aparecem primeiro no treino.
+    "treino/faltas": async () => {
+      const { faltas } = await readMissFiles(missFiles(ctx, t));
+      return groupMisses(faltas).slice(0, 10);
+    },
     "treino/ok": async (body) => {
       log.push({ tipo: "ok", pergunta: String(body.pergunta || "").slice(0, 200), intencao: String(body.intencao || "").slice(0, 60), em: new Date().toISOString() });
       return { ok: true };
@@ -373,6 +387,71 @@ async function cmdTreinar(ctx, io) {
   } finally {
     up.stop();
   }
+}
+
+// Versão 0.4: onde procurar as frases não entendidas.
+function missFiles(ctx, t) {
+  return [...(ctx.flags.arquivo ? [resolve(ctx.flags.arquivo)] : []), join(t.dir, "faltas.jsonl"), join(ctx.project, "faltas.json"), join(ctx.work, "faltas.json")];
+}
+async function cmdAprender(ctx, io) {
+  const { raw, target: t } = await currentKnowledge(ctx);
+  const { faltas, arquivos } = await readMissFiles(missFiles(ctx, t));
+  const groups = suggestFor(groupMisses(faltas), raw);
+  const text = learnText(groups, { arquivos: arquivos.map((f) => relative(ctx.project, f) || f) });
+  await mkdir(ctx.work, { recursive: true });
+  await writeFile(join(ctx.work, "APRENDER.txt"), `${text}\n`);
+  await writeFile(join(ctx.work, "aprender.json"), `${JSON.stringify(groups, null, 2)}\n`);
+  if (!ctx.flags.aplicar || !groups.length) return { grupos: groups, arquivos, aplicadas: [], texto: text };
+  let knowledge = raw;
+  const aplicadas = [];
+  const antes = evaluateKnowledge(raw).geral;
+  for (const g of groups) {
+    let body = null;
+    if (io.question) {
+      io.print(`\n“${g.frase}” (${g.vezes}x). Sugestão: ${g.sugestao.tipo === "nova" ? "criar pergunta nova" : `${g.sugestao.tipo} “${g.sugestao.titulo}”`}`);
+      const choice = (await io.question("  1) aceitar a sugestão  2) pergunta nova com resposta minha  3) pular  [3]: ")).trim();
+      if (choice === "1" && g.sugestao.tipo !== "nova") body = correctionFor(g, "sugestao");
+      else if (choice === "1" || choice === "2") {
+        const resposta = (await io.question("  Resposta certa: ")).trim();
+        if (resposta.length >= 2) body = correctionFor(g, "nova", resposta);
+      }
+    } else if (["intencao", "faq"].includes(g.sugestao.tipo) && g.sugestao.confianca >= 0.8) body = correctionFor(g, "sugestao");
+    if (!body) continue;
+    try {
+      const r = applyCorrection(knowledge, body);
+      knowledge = r.knowledge;
+      aplicadas.push(r.mudanca);
+      io.print(`     Aprendido: ${r.mudanca}`);
+    } catch (e) {
+      io.print(`     Não aplicado: ${e.message}`);
+    }
+  }
+  if (aplicadas.length) {
+    const bkp = await backup(ctx, t.dir);
+    await writeKnowledge(t.dir, knowledge, { force: true });
+    return { grupos: groups, arquivos, aplicadas, backup: bkp, antes, depois: evaluateKnowledge(knowledge).geral, texto: text };
+  }
+  return { grupos: groups, arquivos, aplicadas, texto: text };
+}
+
+// Versão 0.4: editor visual. Salva com backup (um por sessão) e mostra o acerto.
+async function cmdEditar(ctx, io) {
+  const { target: t } = await ensureAgent(ctx);
+  let backedUp = null;
+  const editor = await startEditor({
+    load: () => readKnowledge(t.dir),
+    save: async (knowledge) => {
+      if (!backedUp) backedUp = await backup(ctx, t.dir);
+      await writeKnowledge(t.dir, knowledge, { force: true });
+      io.print(`     Base salva (${new Date().toLocaleTimeString("pt-BR")}).`);
+      return { backup: backedUp };
+    },
+    port: Number(ctx.flags.porta) || 4720,
+    listen: listenFree,
+  });
+  io.print(`Editor da base: ${editor.url}\n(abra este endereço; ele tem o código desta sessão). Ctrl+C ou Enter para encerrar.`);
+  if (!ctx.flags["sem-navegador"]) openBrowser(editor.url);
+  return editor;
 }
 
 async function cmdAssistente(ctx) {
@@ -446,7 +525,7 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(HELP);
     return 0;
   }
-  const ctx = await context(["assistente", "observar", "treinar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
+  const ctx = await context(["assistente", "observar", "treinar", "aprender", "editar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
   switch (command) {
     case "assistente": {
       const r = await cmdAssistente(ctx);
@@ -466,6 +545,31 @@ export async function main(argv = process.argv.slice(2)) {
         rl?.close();
       }
       return 0;
+    }
+    case "aprender": {
+      const interactive = Boolean(process.stdin.isTTY) && !flags.sim;
+      const rl = interactive && flags.aplicar ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+      const io = makeIo(ctx, rl);
+      if (flags.json) io.print = () => {};
+      try {
+        const r = await cmdAprender(ctx, io);
+        print(ctx, { grupos: r.grupos, arquivos: r.arquivos, aplicadas: r.aplicadas, acertoAntes: r.antes, acerto: r.depois }, `${r.texto}${r.aplicadas.length ? `\n\nAplicadas: ${r.aplicadas.length}. Acerto da base: ${r.antes}% → ${r.depois}%. Backup: ${r.backup}` : ""}\nRelatório em ${WORK}/APRENDER.txt.`);
+      } finally {
+        rl?.close();
+      }
+      return 0;
+    }
+    case "editar": {
+      const rl = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+      const io = makeIo(ctx, rl);
+      const editor = await cmdEditar(ctx, io);
+      if (rl) {
+        await rl.question("");
+        rl.close();
+        await editor.stop();
+        return 0;
+      }
+      return null;
     }
     case "analisar": {
       const { report, arquivo } = await cmdAnalisar(ctx);

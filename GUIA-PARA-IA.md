@@ -93,3 +93,12 @@ próprio prompt. Depois, diga à pessoa:
 
 Se a pessoa não tiver o prompt, peça que rode primeiro:
 `node bin/agent-generator.js criar <pasta-do-projeto>` e depois `prompt-ia`.
+
+## Versão 0.4: aprender e editar
+
+- `agent-generator aprender <pasta> --json`: grupos de frases não entendidas com sugestão
+  (`intencao`, `faq`, `pagina`, `nova`). `--aplicar --sim` aplica só o seguro (confiança ≥ 0,8).
+- `agent-generator editar <pasta> --sem-navegador`: imprime o endereço do editor (com código de
+  sessão). Não use em servidor público: é uma ferramenta local.
+- O agente já entende cor/marca/tamanho do catálogo e "e em azul?", "o mais barato", "compara os
+  dois"; não é preciso criar intenções para isso.

@@ -62,6 +62,12 @@ export function checkKnowledge(input = {}) {
     posicao: a.posicao === "esquerda" ? "esquerda" : "direita",
     // Opcional: endereço do servidor do agente (modo servidor). Vazio = roda no navegador.
     endpoint: safeLink(a.endpoint),
+    // Versão 0.4: para onde o widget manda as frases que não entendeu (servidor do próprio site,
+    // ex.: "/api/agente"). Vazio = ficam só neste navegador (agente.faltas() no console).
+    registro: (() => {
+      const link = safeLink(a.registro);
+      return link && !/^https?:/i.test(link) ? link : "";
+    })(),
   };
 
   const intencoes = {};
