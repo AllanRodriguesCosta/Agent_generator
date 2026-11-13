@@ -60,11 +60,22 @@ jobs:
           EXE=agente-gerador; if [ "$RUNNER_OS" = "Windows" ]; then EXE=agente-gerador.exe; fi
           cp "dist/$EXE" "$SITE/"
           cd "$SITE"
-          "./$EXE" --sim --sem-pausa | tee saida.txt
+          "./$EXE" --sim --sem-pausa > saida.txt 2>&1 || { cat saida.txt; exit 1; }
+          cat saida.txt
           test -f agente/conhecimento/faq.json
           test -f agente-gerador/backup/html/index.html
           grep -q "agente: agent-generator" index.html
           grep -q "Acerto da base" agente-gerador/RESUMO.txt
-          "./$EXE" conversar . "oi" "qual o horario" | tee conversa.txt
+          "./$EXE" conversar . "oi" "qual o horario" > conversa.txt 2>&1 || { cat conversa.txt; exit 1; }
+          cat conversa.txt
           grep -q "Café Aurora" conversa.txt
-          "./$EXE" ajuda | grep -q "assistente"
+          "./$EXE" ajuda > ajuda.txt
+          grep -q "assistente" ajuda.txt
+      - name: Diagnóstico (só em caso de falha)
+        if: failure()
+        shell: bash
+        run: |
+          SITE="$RUNNER_TEMP/site com espaço"
+          ls -la "$SITE" dist || true
+          diag=$( { cat "$SITE/saida.txt" "$SITE/conversa.txt" "$SITE/ajuda.txt"; ls -la "$SITE"; } 2>&1 | tail -c 5000 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=diagnostico::$diag"
