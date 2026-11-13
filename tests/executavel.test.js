@@ -146,3 +146,13 @@ test("assistente: escolhe a pasta servível (raiz ou public/)", async (t) => {
   await writeFile(join(dir, "index.html"), "<html></html>");
   assert.equal(await staticRoot(dir, []), dir);
 });
+
+test("arquivo com o nome da pasta de trabalho dá erro claro (não EEXIST)", async (t) => {
+  const site = await exampleCopy(t);
+  await writeFile(join(site, "agente-gerador"), "binário");
+  const r = spawnSync(process.execPath, [join(ROOT, "bin", "agent-generator.js"), "assistente", site, "--sim"], { encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Renomeie o arquivo/);
+  const { exeName } = await import("../scripts/build-exe.js");
+  assert.deepEqual(["win32", "linux", "darwin"].map((p) => exeName(p)), ["agente-gerador-windows.exe", "agente-gerador-linux", "agente-gerador-macos"]);
+});

@@ -95,7 +95,8 @@ contra os 100 MB do executável.
   - `src/cli/assistente.js`: o fluxo de perguntas.
 - Para gerar o executável na sua máquina: `npm run build:exe`. Ele precisa de Node 22.12 ou mais
   novo, de preferência o 24, e de internet na primeira vez, para baixar o `postject` pelo `npx`.
-  O resultado sai em `dist/`, que fica fora do git.
+  O resultado sai em `dist/` (`agente-gerador-windows.exe`, `-linux` ou `-macos`), que fica fora do
+  git. Não renomeie para só `agente-gerador`: esse nome é o da pasta de trabalho que ele cria.
 - Como o executável funciona por dentro:
   1. O Node "single executable application" leva um recurso `pacote.json` com os arquivos de
      `bin/`, `src/`, `widget/` e `templates/`.

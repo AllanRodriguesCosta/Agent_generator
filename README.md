@@ -114,7 +114,7 @@ site, aprendizado com o uso, IA só como plano B): [docs/MELHORIAS.md](docs/MELH
 
 ```bash
 npm test            # node --test, sem dependências
-npm run build:exe   # gera dist/agente-gerador(.exe) para o sistema atual (Node 22.12+)
+npm run build:exe   # gera dist/agente-gerador-<sistema> para o sistema atual (Node 22.12+)
 ```
 
 Sem dependências de produção. Licença MIT.

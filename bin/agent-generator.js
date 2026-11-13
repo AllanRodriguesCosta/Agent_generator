@@ -74,6 +74,9 @@ async function context(projectArg, flags) {
   const info = await stat(project).catch(() => null);
   if (!info?.isDirectory()) throw new Error(`Pasta não encontrada: ${project}`);
   const work = join(project, WORK);
+  const workInfo = await stat(work).catch(() => null);
+  if (workInfo && !workInfo.isDirectory())
+    throw new Error(`Existe um arquivo chamado "${WORK}" na pasta do projeto, e esse nome é usado pela pasta de trabalho. Renomeie o arquivo (ex.: agente-gerador-linux) e rode de novo.`);
   let config = {};
   try {
     config = await readJson(join(work, "config.json"));

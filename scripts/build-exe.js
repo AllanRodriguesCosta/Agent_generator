@@ -1,7 +1,7 @@
 // Gera o executável do agent-generator para o sistema atual (Windows .exe, Linux ou macOS), usando
 // o recurso "single executable application" do próprio Node. Precisa de Node 22.12+ (de preferência
 // 24) e de internet na primeira vez (baixa a ferramenta postject pelo npx).
-// Uso: node scripts/build-exe.js            -> dist/agente-gerador(.exe)
+// Uso: node scripts/build-exe.js            -> dist/agente-gerador-windows.exe (ou -linux, -macos)
 //      node scripts/build-exe.js --pacote   -> só dist/pacote.json (sem executável; usado nos testes)
 import { mkdir, readdir, readFile, writeFile, copyFile, rm, chmod } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
@@ -14,6 +14,10 @@ const DIST = join(ROOT, "dist");
 // O que vai dentro do executável: o mesmo que o pacote npm publicaria.
 export const INCLUDE = ["bin", "src", "widget", "templates", "package.json", "LICENSE"];
 const FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
+
+export function exeName(platform = process.platform) {
+  return platform === "win32" ? "agente-gerador-windows.exe" : platform === "darwin" ? "agente-gerador-macos" : "agente-gerador-linux";
+}
 
 async function collect(path, out) {
   const full = join(ROOT, path);
@@ -68,7 +72,9 @@ export async function buildExe() {
   run(process.execPath, ["--experimental-sea-config", relative(ROOT, config)]);
   const win = process.platform === "win32";
   const mac = process.platform === "darwin";
-  const exe = join(DIST, win ? "agente-gerador.exe" : "agente-gerador");
+  // Nome com o sistema: um arquivo "agente-gerador" sem extensão colidiria com a pasta de trabalho
+  // agente-gerador/ que o próprio executável cria no projeto.
+  const exe = join(DIST, exeName());
   await rm(exe, { force: true });
   await copyFile(process.execPath, exe);
   if (!win) await chmod(exe, 0o755);

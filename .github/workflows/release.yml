@@ -20,13 +20,10 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            file: agente-gerador.exe
             name: agente-gerador-windows.exe
           - os: ubuntu-latest
-            file: agente-gerador
             name: agente-gerador-linux
           - os: macos-latest
-            file: agente-gerador
             name: agente-gerador-macos
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -43,7 +40,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p saida
-          cp "dist/${{ matrix.file }}" "saida/${{ matrix.name }}"
+          cp "dist/${{ matrix.name }}" "saida/"
           cp lancadores/agente-gerador.cmd lancadores/agente-gerador.sh saida/
       - uses: actions/upload-artifact@v4
         with:
