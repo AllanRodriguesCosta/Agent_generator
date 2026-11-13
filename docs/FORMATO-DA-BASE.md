@@ -141,7 +141,12 @@ começos de palavra ("pag" → "pagamento") são aceitos.
 - `campos` é opcional: sem ele, o agente descobre código, status, data, total e nome pelos nomes
   mais comuns (`status`, `situacao`, `createdAt`, `total`, `totalCents`...). Campo com `cents` no
   nome é dividido por 100.
-- A observação (`agent-generator observar`) preenche este arquivo sozinha.
+- `auth` (0.5, opcional): para sites que guardam o login no navegador e mandam
+  `Authorization: Bearer`. Ex.: `"auth": { "tipo": "bearer", "onde": "localStorage", "chave": "auth", "campo": "accessToken" }`.
+  O widget lê o token dessa chave (e do campo, se o valor for JSON) só na hora da consulta e manda
+  para a rota do próprio site. Sem `auth`, vale o cookie da sessão.
+- A observação (`agent-generator observar`) preenche este arquivo sozinha, inclusive o `auth`
+  (ela anota só o **nome** da chave que guarda o token, nunca o valor).
 
 ## Catálogo: entidades e memória (0.4)
 

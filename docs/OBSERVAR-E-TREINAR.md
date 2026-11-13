@@ -99,8 +99,10 @@ Formato dos arquivos novos (`fluxos.json` e `consultas.json`): [FORMATO-DA-BASE.
 
 ## Limites
 
-- A consulta da conta usa a sessão por **cookie** do próprio site (mesmo domínio). Sites que guardam
-  o login em `localStorage` e mandam `Authorization: Bearer` não funcionam sem ajuste manual.
+- A consulta da conta usa a sessão por **cookie** do próprio site (mesmo domínio). Desde a 0.5,
+  sites que guardam o login em `localStorage`/`sessionStorage` e mandam `Authorization: Bearer`
+  também funcionam: a observação descobre o nome da chave (nunca o valor) e grava
+  `consultas.auth`.
 - O proxy não repassa WebSocket (recarregamento automático de alguns `npm run dev` pode não
   funcionar dentro da sessão; o site funciona normalmente).
 - Sites com Content-Security-Policy por *nonce* podem bloquear os scripts injetados. Nesse caso, use

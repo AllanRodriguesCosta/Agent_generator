@@ -9,12 +9,12 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 | # | Melhoria | Por que importa |
 | --- | --- | --- |
 | A1 | ✅ (0.3, pela observação) **Ler o site rodando** (`--url http://localhost:3000`): visitar as páginas como um navegador e ler o texto final | Sites React/Vue/Next montam o texto em JavaScript; hoje o raio X lê só o código-fonte e perde parte do conteúdo |
-| A2 | `sitemap.xml`, `robots.txt`, `<meta description>`, Open Graph e títulos | Nome, descrição e lista de páginas mais fiéis, com pouco esforço |
+| A2 | ✅ (0.5: sitemap e metadata do Next) `sitemap.xml`, `robots.txt`, `<meta description>`, Open Graph e títulos | Nome, descrição e lista de páginas mais fiéis, com pouco esforço |
 | A3 | ✅ (0.3, pela observação) **Catálogo vindo da API** do próprio site (detectar `GET /api/produtos` e testar com o site rodando) e de seeds/migrações SQL | Hoje o catálogo vem de JSON/CSV no repositório; muitos projetos guardam no banco |
 | A4 | ✅ (0.3) **Formulários viram tarefas**: campos obrigatórios, validações, para onde enviam | O agente explica "como me cadastro", "o que preciso para agendar" com os campos reais |
 | A5 | ✅ (0.3) **Páginas que pedem login** (rotas protegidas por middleware) | O agente avisa "para ver pedidos, entre na sua conta", como na Violet Voltage |
-| A6 | Textos de `i18n/locales` e mensagens de erro do código | Respostas para "deu erro X" e suporte a sites em inglês/espanhol |
-| A7 | **Nota de cobertura** no relatório: o que o agente sabe e o que falta (sem horário, sem política de troca, sem contato...) | Mostra exatamente o que a pessoa precisa escrever na base |
+| A6 | ✅ (0.5: locales com FAQ e mensagens de erro no prompt da IA) Textos de `i18n/locales` e mensagens de erro do código | Respostas para "deu erro X" e suporte a sites em inglês/espanhol |
+| A7 | ✅ (0.5) **Nota de cobertura** no relatório: o que o agente sabe e o que falta (sem horário, sem política de troca, sem contato...) | Mostra exatamente o que a pessoa precisa escrever na base |
 
 ## B. Agente mais "esperto" (sem modelo de linguagem)
 
@@ -36,8 +36,8 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 | --- | --- |
 | C1 | ✅ (0.4, `aprender` + modo treino) **Registro das frases não entendidas**, anônimo e local (opcional: enviado ao servidor do próprio site) e comando `agent-generator aprender` que mostra os grupos e sugere onde encaixar |
 | C2 | ✅ (0.3, modo treino: Certo/Corrigir) Botões 👍/👎 em cada resposta, que alimentam a avaliação |
-| C3 | `avaliar --relatorio html`: painel com acerto por intenção, confusões entre intenções e frases problemáticas |
-| C4 | Gerar **frases de teste automaticamente** (variações com erro de digitação, sem acento, gírias) para a avaliação não ficar fácil demais |
+| C3 | ✅ (0.5, `avaliar --html`) `avaliar --relatorio html`: painel com acerto por intenção, confusões entre intenções e frases problemáticas |
+| C4 | ✅ (0.5, `avaliar --variacoes`) Gerar **frases de teste automaticamente** (variações com erro de digitação, sem acento, gírias) para a avaliação não ficar fácil demais |
 
 ## D. IA opcional e gratuita na hora de responder
 

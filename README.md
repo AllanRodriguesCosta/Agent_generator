@@ -19,6 +19,11 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
   barato", "compara os dois", "me fala do segundo"), guarda as frases que não entendeu (sem dado
   pessoal) e o comando `aprender` sugere onde encaixar cada uma. A base também pode ser editada
   num **editor visual** no navegador. Ver [docs/APRENDER-E-EDITAR.md](docs/APRENDER-E-EDITAR.md).
+- **Raio X mais completo e avaliação mais dura (0.5):** lê `sitemap.xml`, arquivos de tradução
+  (`locales/`, com perguntas frequentes em JSON), `metadata` do Next.js e as mensagens de erro do
+  código; a avaliação gera frases com erro de digitação, sem acento e informais, mostra os
+  **assuntos que faltam** na base (horário, trocas, privacidade...) e sai em HTML
+  (`avaliar --variacoes --html`). Consultas da conta funcionam também com login por token.
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 
@@ -92,7 +97,7 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 | `analisar <pasta>` | Só o raio X (`agente-gerador/relatorio.json`) |
 | `gerar <pasta>` | Base de conhecimento a partir do relatório (não sobrescreve sem `--forcar`) |
 | `instalar <pasta>` | Núcleo e widget na pasta pública; `--inserir` liga nas páginas |
-| `avaliar <pasta>` | Porcentagem de acerto e erros (`--frases` com frases próprias) |
+| `avaliar <pasta>` | Porcentagem de acerto, erros e assuntos que faltam (`--frases` com frases próprias, `--variacoes` com frases geradas, `--html` grava `agente-gerador/avaliacao.html`) |
 | `conversar <pasta> [frases]` | Conversa no terminal (sem frases: modo interativo) |
 | `prompt-ia <pasta>` | `agente-gerador/PROMPT-IA.md` para colar no ChatGPT, Gemini, Copilot, DeepSeek... |
 | `aplicar-ia <pasta> <arquivo>` | Junta a resposta da IA à base, com conferência e backup |
@@ -113,9 +118,9 @@ Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`
 
 ## Limites (de propósito)
 
-- É um agente **simples**: responde com o que está na base (agora também com conversas em etapas e
-  consultas da conta). Não conversa livremente, não lembra de conversas antigas e não faz compras
-  ou cadastros pelo visitante; ele leva às páginas certas.
+- É um agente **simples**: responde com o que está na base (com conversas em etapas, consultas da
+  conta e memória da última lista). Não conversa livremente, não lembra de conversas antigas e não
+  faz compras ou cadastros pelo visitante; ele leva às páginas certas.
 - O raio X lê o código, não o banco de dados. Catálogo em banco: aponte `catalogo.url` para a
   rota da API que lista os itens (o raio X sugere quando encontra uma).
 - Português do Brasil.

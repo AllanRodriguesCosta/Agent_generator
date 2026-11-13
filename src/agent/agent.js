@@ -85,7 +85,7 @@ export function createAgent(input) {
   }
   const lookupFor = (id) => {
     const d = consultas.dados.find((x) => x.id === id);
-    return d && { texto: `Vou consultar ${d.rotulo} da sua conta...`, consulta: { id: d.id, rotulo: d.rotulo, url: d.url, campos: d.campos, pagina: d.pagina, login: consultas.login } };
+    return d && { texto: `Vou consultar ${d.rotulo} da sua conta...`, consulta: { id: d.id, rotulo: d.rotulo, url: d.url, campos: d.campos, pagina: d.pagina, login: consultas.login, ...(consultas.auth ? { auth: consultas.auth } : {}) } };
   };
   const searchLink = (term) => {
     const b = consultas.buscas[0];

@@ -9,6 +9,7 @@ import { parseMarkdown } from "./docs.js";
 import { routesFromSource, routeFromFile } from "./routes.js";
 import { catalogFromJson, catalogFromCsv } from "./data.js";
 import { contactsFrom } from "./contacts.js";
+import { pagesFromSitemap, titleFromPath, LOCALE_FILE, readLocale, nextMetadata, errorMessages } from "./extras.js";
 import { tokens, STOPWORDS } from "../agent/text.js";
 
 export const REPORT_VERSION = 1;
@@ -50,6 +51,8 @@ export async function scanProject(root, { maxFiles } = {}) {
     catalogo: null,
     outrosCatalogos: [],
     contatos: {},
+    mensagensErro: [],
+    traducoes: [],
     palavrasChave: [],
     avisos: [],
   };
@@ -59,6 +62,7 @@ export async function scanProject(root, { maxFiles } = {}) {
   const stack = new Set();
   const mounts = new Set();
   const linkModels = new Map();
+  const sitemap = [];
 
   for (const file of files) {
     let content;
@@ -84,8 +88,26 @@ export async function scanProject(root, { maxFiles } = {}) {
       for (const [dep, label] of [["django", "Django"], ["flask", "Flask"], ["fastapi", "FastAPI"]]) if (content.toLowerCase().includes(dep)) stack.add(label);
       continue;
     }
+    // Versão 0.5: sitemap e arquivos de tradução.
+    if (/(^|\/)sitemap[\w-]*\.xml$/i.test(rel)) {
+      sitemap.push(...pagesFromSitemap(content));
+      continue;
+    }
+    if (ext === ".json" && LOCALE_FILE.test(rel)) {
+      const loc = readLocale(content);
+      const lang = rel.match(LOCALE_FILE)[3].replace("_", "-");
+      if (!report.traducoes.includes(lang)) report.traducoes.push(lang);
+      for (const f of loc.faq) report.faq.push({ ...f, fonte: rel });
+      visible.push(loc.textos.join("\n"));
+      continue;
+    }
     if (MARKUP.has(ext)) {
       const page = parseMarkup(content);
+      const meta = /\.(jsx|tsx|js|ts)$/.test(ext) ? nextMetadata(content) : null;
+      if (meta) {
+        page.titulo ||= meta.titulo;
+        page.descricao ||= meta.descricao;
+      }
       const fileRoute = routeFromFile(rel);
       const isPage = ext === ".html" || ext === ".htm" || fileRoute || (ext === ".php" && /<html|<body|<h1/i.test(content));
       if (isPage) {
@@ -111,6 +133,7 @@ export async function scanProject(root, { maxFiles } = {}) {
       if (ext === ".html" || ext === ".htm") visible.push(page.texto);
     }
     if (SOURCE.has(ext)) {
+      for (const msg of errorMessages(content)) if (!report.mensagensErro.includes(msg) && report.mensagensErro.length < 60) report.mensagensErro.push(msg);
       const found = routesFromSource(content, rel);
       // Rotas de um Router montado com app.use("/api", ...) ganham o prefixo depois.
       if (/\bRouter\(\)|express\.Router|APIRouter|Blueprint\(/.test(content)) for (const r of found) r.roteador = true;
@@ -152,6 +175,13 @@ export async function scanProject(root, { maxFiles } = {}) {
       const link = [...linkCount.values()].find((l) => l.href === r.caminho);
       report.paginas.push({ href: r.caminho, titulo: link?.texto || "", descricao: "", secoes: [], arquivo: r.arquivo });
     }
+  // Páginas do sitemap.xml que o raio X não achou em arquivo.
+  for (const href of sitemap)
+    if (!known.has(href)) {
+      known.add(href);
+      const link = [...linkCount.values()].find((l) => l.href === href);
+      report.paginas.push({ href, titulo: link?.texto || titleFromPath(href), descricao: "", secoes: [], arquivo: "sitemap.xml" });
+    }
   // Título vazio: usa o texto dos links que apontam para a página.
   for (const p of report.paginas)
     if (!p.titulo) p.titulo = [...linkCount.values()].find((l) => l.href === p.href || `/${l.href.replace(/^\.?\//, "")}` === p.href)?.texto || p.href;
@@ -191,6 +221,8 @@ export async function scanProject(root, { maxFiles } = {}) {
     formularios: report.formularios.length,
     faq: report.faq.length,
     itensCatalogo: report.catalogo?.total || 0,
+    mensagensErro: report.mensagensErro.length,
+    traducoes: report.traducoes.length,
     ignorados: skipped,
   };
   if (!report.paginas.length) report.avisos.push("Nenhuma página encontrada (HTML, Next.js, Nuxt, SvelteKit ou rotas de React/Vue). Confira a pasta indicada.");

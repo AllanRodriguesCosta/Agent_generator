@@ -224,7 +224,18 @@ export function checkKnowledge(input = {}) {
       if (!ok) problems.push(`consultas.dados.${d.id}: precisa de url do próprio site e 2 exemplos; ignorada.`);
       return ok;
     });
-  const consultas = { login: safeLink(rawQ.login), buscas, dados };
+  // Versão 0.5: como enviar a sessão nas consultas. Padrão: cookie do próprio site. "bearer":
+  // o widget lê o token do navegador (chave e campo informados) e manda no Authorization.
+  const rawAuth = rawQ.auth && typeof rawQ.auth === "object" ? rawQ.auth : null;
+  let auth = null;
+  if (rawAuth?.tipo === "bearer") {
+    const okKey = typeof rawAuth.chave === "string" && /^[\w.:-]{1,80}$/.test(rawAuth.chave);
+    const okWhere = ["localStorage", "sessionStorage"].includes(rawAuth.onde || "localStorage");
+    const okField = rawAuth.campo === undefined || rawAuth.campo === "" || (typeof rawAuth.campo === "string" && /^[\w.]{1,40}$/.test(rawAuth.campo));
+    if (okKey && okWhere && okField) auth = { tipo: "bearer", onde: rawAuth.onde || "localStorage", chave: rawAuth.chave, ...(rawAuth.campo ? { campo: rawAuth.campo } : {}) };
+    else problems.push("consultas.auth: precisa de chave (nome no localStorage/sessionStorage) e campo opcional; ignorado.");
+  }
+  const consultas = { login: safeLink(rawQ.login), buscas, dados, ...(auth ? { auth } : {}) };
 
   if (!Object.keys(intencoes).length && !faq.length && !paginas.length && !itens.length && !url && !fluxos.length)
     problems.push("Base vazia: o agente só vai cumprimentar e pedir outra pergunta.");

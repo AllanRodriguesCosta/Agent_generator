@@ -26,6 +26,8 @@ export function compactReport(report, knowledge, maxChars = 24000) {
     contatos: report.contatos,
     documentos: (report.documentos || []).slice(0, 8).map((d) => ({ arquivo: d.arquivo, titulo: d.titulo, secoes: d.secoes.slice(0, 15) })),
     palavrasChave: report.palavrasChave,
+    // Versão 0.5: mensagens de erro que o site mostra; a IA pode escrever "o que fazer" para cada uma.
+    mensagensErro: (report.mensagensErro || []).slice(0, 25),
   };
   let json = JSON.stringify(data, null, 1);
   while (json.length > maxChars && data.documentos.length) {
@@ -53,6 +55,9 @@ automaticamente a partir do código.
    exemplos, 1 resposta curta e, se houver, uma ação com link de página do relatório.
 3. Escreva de 5 a 15 perguntas frequentes com resposta baseada SOMENTE em fatos do relatório.
 4. Para cada página, escreva sinônimos e jeitos de pedir por ela.
+5. Se o relatório tiver "mensagensErro", escolha até 8 que um visitante pode ver e escreva uma
+   pergunta frequente "Apareceu a mensagem “...”. O que faço?" com o que fazer, usando só o que a
+   própria mensagem e o relatório dizem.
 
 ## Regras obrigatórias
 
