@@ -14,6 +14,11 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
 - **Aprende com você usando o site (0.3):** o executável observa alguns minutos de uso real e,
   na parte 2 (`agente-treinador`), você conversa com o agente no próprio site e corrige cada
   resposta com um clique. Ver [docs/OBSERVAR-E-TREINAR.md](docs/OBSERVAR-E-TREINAR.md).
+- **Conversa de verdade e melhora com o uso (0.4):** entende cor, marca, tamanho e categoria do
+  seu catálogo ("tem tênis preto da Nike até 300?"), lembra a última lista ("e em azul?", "o mais
+  barato", "compara os dois", "me fala do segundo"), guarda as frases que não entendeu (sem dado
+  pessoal) e o comando `aprender` sugere onde encaixar cada uma. A base também pode ser editada
+  num **editor visual** no navegador. Ver [docs/APRENDER-E-EDITAR.md](docs/APRENDER-E-EDITAR.md).
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 
@@ -94,7 +99,9 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 | `gemini <pasta>` | Igual aos dois acima, automático, com `GEMINI_API_KEY` (plano gratuito) |
 | `servir <pasta>` | Servidor local para sites HTML estáticos |
 | `observar [pasta]` | Parte 1+: você usa o site por alguns minutos e o agente aprende (páginas reais, formulários, busca, login, catálogo da API, consulta de pedidos). `--url`, `--minutos` |
-| `treinar [pasta]` | Parte 2: o site abre com o agente em modo treino; **Certo**/**Corrigir** em cada resposta, inclusive conversas em etapas. É o que o `agente-treinador` roda |
+| `treinar [pasta]` | Parte 2: o site abre com o agente em modo treino; **Certo**/**Corrigir** em cada resposta, inclusive conversas em etapas. É o que o `agente-treinador` roda. Desde a 0.4, as frases não entendidas no site aparecem primeiro |
+| `aprender [pasta]` | Agrupa as frases que o agente não entendeu (do servidor ou exportadas do navegador) e sugere onde encaixar; `--aplicar` pergunta grupo a grupo |
+| `editar [pasta]` | Editor visual da base no navegador, com teste do rascunho, acerto e salvamento com backup |
 
 Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`, `scan`, `generate`,
 `install`, `eval`, `chat`, `ai-prompt`, `ai-apply`, `serve`.

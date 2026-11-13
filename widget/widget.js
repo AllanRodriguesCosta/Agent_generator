@@ -6,10 +6,33 @@
 import { createAgent } from "./nucleo/agent.js";
 import { mapItems } from "./nucleo/catalog-map.js";
 import { describeLookup } from "./nucleo/lookup.js";
+import { anonymize, isMiss } from "./nucleo/privacy.js";
 
 const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
 const STORE = "agente_widget_v1";
 const MAX_HISTORY = 30;
+const MISSES = "agente_faltas_v1";
+const MISS_DAYS = 90;
+
+// Versão 0.4: frases não entendidas, sem dado pessoal, neste navegador (até 100, por 90 dias).
+export function readMisses(now = Date.now()) {
+  try {
+    const list = JSON.parse(globalThis.localStorage.getItem(MISSES) || "[]");
+    return Array.isArray(list) ? list.filter((m) => m && typeof m.frase === "string" && now - new Date(m.em).getTime() < MISS_DAYS * 86400000) : [];
+  } catch {
+    return [];
+  }
+}
+export function rememberMiss(frase, now = new Date()) {
+  const texto = anonymize(frase);
+  if (texto.length < 2) return null;
+  try {
+    globalThis.localStorage.setItem(MISSES, JSON.stringify([...readMisses(now.getTime()), { frase: texto, em: now.toISOString() }].slice(-100)));
+  } catch {
+    /* sem armazenamento: segue sem guardar */
+  }
+  return texto;
+}
 
 // Só links do próprio site ou http(s); qualquer outra coisa vira "#".
 export function safeHref(href, origin = globalThis.location?.origin || "http://localhost") {
@@ -185,6 +208,12 @@ export async function mount(options = {}) {
       }
       r = { ...r, texto: lookup.texto, acoes: lookup.acoes };
     }
+    // Frase não entendida: guarda aqui e, se a base tiver "registro", manda ao servidor do site.
+    if (isMiss(r)) {
+      const texto = rememberMiss(clean);
+      if (texto && agente.registro && !endpoint)
+        fetch(agente.registro, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mensagem: texto, falta: true }) }).catch(() => {});
+    }
     const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [], intencao: r.intencao || "" };
     state.mensagens.push(bot);
     state.contexto = r.contexto || {};
@@ -226,7 +255,15 @@ export async function mount(options = {}) {
     ask(input.value);
   });
   if (options.aberto) setOpen(true);
-  return { ask, open: () => setOpen(true), close: () => setOpen(false), agent };
+  // No console: agente.faltas() lista; agente.exportarFaltas() baixa o JSON para "agent-generator aprender".
+  const exportMisses = () => {
+    const blob = new globalThis.Blob([JSON.stringify(readMisses(), null, 2)], { type: "application/json" });
+    const a = el("a", { href: URL.createObjectURL(blob), download: "faltas.json" });
+    document.body.append(a);
+    a.click();
+    a.remove();
+  };
+  return { ask, open: () => setOpen(true), close: () => setOpen(false), agent, faltas: () => readMisses(), exportarFaltas: exportMisses };
 }
 
 if (typeof document !== "undefined" && !globalThis.AGENTE_CONFIG?.manual) {

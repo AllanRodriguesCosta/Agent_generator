@@ -5,6 +5,7 @@ import { train, classify } from "./classifier.js";
 import { normalize, tokens } from "./text.js";
 import { createIndex, strong, weak } from "./search.js";
 import { checkKnowledge } from "./knowledge.js";
+import { catalogVocab, extractEntities, hasEntities, matchesEntities, colorsIn, describeEntities, FOLLOW_UP, COMPARE, DETAIL, pickOrdinals, compareItems } from "./entities.js";
 
 const MORE = /^(mais|outr[oa]s?|mais (opcoes|opcao|itens|produtos|resultados)|tem mais|mostra mais|ver mais)\b/;
 const CATALOG_WORDS = /\b(comprar|melhor|indica|recomenda|sugere|sugestao|compra|preco|precos|valor|custa|custam|barat[oa]s?|car[oa]s?|produtos?|itens?|opcoes|modelos?|tem algum|tem alguma|quero (um|uma)|procuro|procurando|vende|vendem|catalogo|ate r?\$?\s?\d)/;
@@ -61,6 +62,8 @@ export function createAgent(input) {
     })),
   ]);
   const fmt = (v) => money(v, agente);
+  const vocab = catalogVocab(catalogo.itens);
+  const itemById = (id) => catalogo.itens.find((p) => p.id === id);
   const card = (p) => ({ id: p.id, nome: p.nome, preco: p.preco, precoTexto: p.preco == null ? "" : fmt(p.preco), link: p.link, imagem: p.imagem, descricao: p.descricao });
   const defaultChips = () => agente.sugestoes.length ? agente.sugestoes : faq.slice(0, 3).map((f) => f.pergunta.slice(0, 60));
 
@@ -107,8 +110,16 @@ export function createAgent(input) {
     fonte: p.id,
   });
 
-  function answerCatalog(text, page = 0) {
-    const max = extractPrice(text);
+  // base: filtros da busca anterior (memória: "e em azul?", "e até 200?").
+  // force: o que o cliente acabou de pedir vale mais que o texto da busca anterior.
+  // reuse: continuação da busca anterior; as entidades já vêm em base (não relê o texto antigo).
+  function answerCatalog(text, page = 0, base = {}, force = {}, { reuse = false } = {}) {
+    const own = reuse ? {} : extractEntities(text, vocab);
+    const ent = { ...base, ...own, ...force };
+    delete ent.busca;
+    const price = extractPrice(text);
+    const max = force.max ?? price ?? base.max ?? null;
+    if (max != null) ent.max = max;
     // Sem o valor e sem as palavras de compra, sobra o assunto ("quero um café até 50" → "café").
     const subject = normalize(text)
       .replace(PRICE_TEXT, " ")
@@ -117,32 +128,87 @@ export function createAgent(input) {
     const found = subject.trim() ? index.search(subject, { tipo: "item", limit: 60 }).filter((h) => h.hits >= 1 && h.ratio >= 0.25) : [];
     let pool = found.length ? found.map((h) => h.doc.dados) : catalogo.itens;
     const label = catalogo.rotulo;
+    // Versão 0.4: categoria, cor, marca e tamanho filtram de verdade.
+    if (hasEntities(ent)) {
+      const within = pool.filter((p) => matchesEntities(p, ent));
+      const anywhere = within.length ? within : catalogo.itens.filter((p) => matchesEntities(p, ent));
+      if (!anywhere.length) {
+        const sem = { ...ent, cor: undefined };
+        const others = ent.cor ? colorsIn(catalogo.itens.filter((p) => matchesEntities(p, sem)), vocab) : [];
+        return {
+          texto: `Não encontrei ${describeEntities(ent, fmt) || label}.${others.length ? ` Tenho em: ${others.join(", ")}.` : ""}`,
+          sugestoes: others.slice(0, 3).map((c) => `E em ${c}?`),
+          itens: [],
+          contexto: { busca: (base.busca || text).slice(0, 200), pagina: 0, filtros: Object.fromEntries(Object.entries({ ...ent, cor: undefined }).filter(([, v]) => v != null)) },
+        };
+      }
+      pool = anywhere;
+    }
+    if (ent.ordem === "asc") pool = [...pool].sort((a, b) => (a.preco ?? Infinity) - (b.preco ?? Infinity));
+    else if (ent.ordem === "desc") pool = [...pool].sort((a, b) => (b.preco ?? -1) - (a.preco ?? -1));
     if (max != null) {
       const within = pool.filter((p) => p.preco != null && p.preco <= max).sort((a, b) => a.preco - b.preco);
       if (!within.length) {
         const cheapest = pool.filter((p) => p.preco != null).sort((a, b) => a.preco - b.preco)[0];
         return {
           texto: cheapest
-            ? `Não encontrei ${label} até ${fmt(max)}. O mais em conta é ${cheapest.nome}, por ${fmt(cheapest.preco)}.`
-            : `Não encontrei ${label} até ${fmt(max)}.`,
+            ? `Não encontrei ${describeEntities({ ...ent, max: null }, fmt) || label} até ${fmt(max)}. O mais em conta é ${cheapest.nome}, por ${fmt(cheapest.preco)}.`
+            : `Não encontrei ${describeEntities({ ...ent, max: null }, fmt) || label} até ${fmt(max)}.`,
           itens: cheapest ? [card(cheapest)] : [],
+          contexto: { busca: (base.busca || text).slice(0, 200), pagina: 0, filtros: Object.fromEntries(Object.entries({ ...ent, max: undefined }).filter(([, v]) => v != null)), ultimos: cheapest ? [cheapest.id] : [] },
         };
       }
       pool = within;
     }
-    if (!found.length && max == null) {
+    if (!found.length && max == null && !hasEntities(ent) && !ent.ordem) {
       const s = searchLink(subject.replace(/\s+/g, " "));
       return s ? { texto: `Não achei isso na lista que eu conheço, mas a busca do site pode ter:`, acoes: [s], itens: [] } : null;
     }
     const slice = pool.slice(page * 3, page * 3 + 3);
     if (!slice.length) return { texto: `Não tenho mais ${label} para essa busca.`, itens: [] };
     const more = pool.length > (page + 1) * 3;
+    const desc = describeEntities({ ...ent, max: null }, fmt);
+    const tips = [...(more ? ["Mais opções"] : []), ...(slice.length >= 2 ? ["Compara os dois primeiros"] : []), ...(ent.ordem !== "asc" && slice.length >= 2 ? ["O mais barato"] : [])];
     return {
-      texto: `${page ? "Mais opções" : `Encontrei ${pool.length === 1 ? "1 opção" : `${pool.length} opções`}`}${max != null ? ` até ${fmt(max)}` : ""}:`,
+      texto: `${page ? "Mais opções" : `Encontrei ${pool.length === 1 ? "1 opção" : `${pool.length} opções`}`}${desc && !page ? ` (${desc})` : ""}${max != null ? ` até ${fmt(max)}` : ""}${ent.ordem === "asc" ? ", da mais em conta" : ent.ordem === "desc" ? ", da mais completa" : ""}:`,
       itens: slice.map(card),
-      sugestoes: more ? ["Mais opções"] : [],
-      contexto: { busca: text.slice(0, 200), pagina: page },
+      sugestoes: tips,
+      contexto: { busca: (base.busca || text).slice(0, 200), pagina: page, filtros: Object.fromEntries(Object.entries(ent).filter(([, v]) => v != null && v !== "")), ultimos: slice.map((p) => p.id) },
     };
+  }
+
+  function followUp(text, n, contexto) {
+    const last = Array.isArray(contexto?.ultimos) ? contexto.ultimos.map(itemById).filter(Boolean) : [];
+    if ((!last.length && typeof contexto?.busca !== "string") || !catalogo.itens.length) return null;
+    const words = n.split(" ").length;
+    const picks = pickOrdinals(text).filter((i) => last[i]);
+    if (COMPARE.test(n) && last.length === 1)
+      return { intencao: "comparar", r: { texto: `Nessa busca só apareceu ${last[0].nome}. Me diga o que mais você quer ver que eu comparo.`, itens: [card(last[0])], sugestoes: [], contexto } };
+    if (COMPARE.test(n) && last.length >= 2) {
+      const chosen = (picks.length >= 2 ? picks : [0, 1]).map((i) => last[i]);
+      return { intencao: "comparar", r: { texto: compareItems(chosen, fmt), itens: chosen.map(card), sugestoes: ["Mais opções"], contexto: { ...contexto, pagina: contexto.pagina || 0 } } };
+    }
+    if (picks.length === 1 && (DETAIL.test(n) || words <= 4)) {
+      const it = last[picks[0]];
+      return {
+        intencao: "detalhe",
+        r: { texto: `${it.nome}${it.preco != null ? `, por ${fmt(it.preco)}` : ""}.${it.descricao ? ` ${it.descricao}` : ""}`, itens: [card(it)], acoes: it.link ? [{ rotulo: "Ver a página", href: it.link }] : [], sugestoes: last.length >= 2 ? ["Compara os dois primeiros", "Mais opções"] : [], contexto },
+      };
+    }
+    const ent = extractEntities(text, vocab);
+    const price = extractPrice(text);
+    const base = { ...(contexto.filtros || {}), busca: contexto.busca };
+    if (ent.ordem && words <= 4 && !hasEntities(ent)) {
+      // "O mais barato" é o mais barato de todos com os mesmos filtros (sem o teto de preço).
+      const r = answerCatalog(contexto.busca || "", 0, ent.ordem === "asc" ? { ...base, max: undefined } : base, { ordem: ent.ordem }, { reuse: true });
+      return r && { intencao: "catalogo", r };
+    }
+    if ((FOLLOW_UP.test(n) && (hasEntities(ent) || price != null) && words <= 6) || (words <= 2 && (ent.cor || ent.tamanho))) {
+      const force = Object.fromEntries(Object.entries({ ...ent, max: price ?? undefined }).filter(([, v]) => v != null));
+      const r = answerCatalog(contexto.busca || text, 0, base, force, { reuse: true });
+      return r && { intencao: "catalogo", r };
+    }
+    return null;
   }
 
   // contexto: o que a resposta anterior devolveu (o widget guarda e manda de volta).
@@ -176,8 +242,11 @@ export function createAgent(input) {
     // "procurar X": busca do próprio site, quando existe e o catálogo não resolve.
     const searchMatch = consultas.buscas.length && n.match(SEARCH);
 
+    // Versão 0.4: memória da última lista ("compara os dois", "o segundo", "e em azul?").
+    const memory = followUp(text, n, contexto);
+    if (memory) return done(memory.r, memory.intencao, 0.9);
     if (MORE.test(n) && n.split(" ").length <= 3) {
-      const next = typeof contexto?.busca === "string" && answerCatalog(contexto.busca, Math.min((contexto.pagina || 0) + 1, 20));
+      const next = typeof contexto?.busca === "string" && answerCatalog(contexto.busca, Math.min((contexto.pagina || 0) + 1, 20), { ...(contexto.filtros || {}), busca: contexto.busca });
       if (next) return done(next, "catalogo");
       return done({ texto: "Mais sobre o quê? Me diga o que você procura.", sugestoes: defaultChips() }, "mais_sem_contexto", 0.5);
     }

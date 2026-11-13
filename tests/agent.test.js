@@ -47,7 +47,7 @@ test("catálogo: assunto + preço máximo, mais opções, nada no orçamento e e
   assert.match(ask("tem algo até 20 reais").texto, /Não encontrei produtos até R\$\s20,00\. O mais em conta é Caneca/);
   const all = ask("quero ver produtos até R$ 300");
   assert.equal(all.itens.length, 3);
-  assert.deepEqual(all.sugestoes, ["Mais opções"]);
+  assert.deepEqual(all.sugestoes, ["Mais opções", "Compara os dois primeiros", "O mais barato"]);
   const more = ask("mais opções", all.contexto);
   assert.equal(more.itens.length, 3);
   assert.notDeepEqual(more.itens.map((i) => i.id), all.itens.map((i) => i.id));

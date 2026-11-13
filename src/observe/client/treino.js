@@ -163,6 +163,44 @@
     box.replaceWith(form);
   }
 
+  // Versão 0.4: frases que o agente não entendeu no uso real vêm primeiro. Tocar numa delas
+  // pergunta ao agente; depois é só marcar "Corrigir" e ensinar a resposta certa.
+  function missesPanel() {
+    fetch(BASE + "faltas", { cache: "no-store" })
+      .then(function (r) {
+        return r.ok ? r.json() : [];
+      })
+      .then(function (groups) {
+        if (!Array.isArray(groups) || !groups.length || document.querySelector(".agt-faltas")) return;
+        var panel = el("aside", null, "position:fixed;left:16px;bottom:16px;z-index:2147483646;max-width:300px;padding:10px;border:1px solid #6d28d9;border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.15);font:13px/1.35 system-ui,sans-serif;color:#1f2937");
+        panel.className = "agt-faltas";
+        panel.setAttribute("aria-label", "Frases que o agente não entendeu");
+        var head = el("strong", "Não entendidas no site (" + groups.length + ")", "display:block;margin-bottom:6px");
+        var hide = el("button", "×", BTN + ";float:right;margin:0");
+        hide.type = "button";
+        hide.setAttribute("aria-label", "Esconder lista");
+        hide.addEventListener("click", function () {
+          panel.remove();
+        });
+        panel.append(hide, head, el("small", "Toque para perguntar ao agente e depois use Corrigir.", "display:block;margin-bottom:6px;color:#6b7280"));
+        groups.slice(0, 8).forEach(function (g) {
+          var b = el("button", "“" + g.frase + "” · " + g.vezes + "x", BTN + ";display:block;width:100%;text-align:left;margin:0 0 4px");
+          b.type = "button";
+          b.addEventListener("click", function () {
+            if (!window.agente) return;
+            window.agente.open();
+            window.agente.ask(g.frase);
+            b.style.opacity = "0.5";
+          });
+          panel.append(b);
+        });
+        document.body.append(panel);
+      })
+      .catch(function () {});
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(missesPanel, 800); });
+  else setTimeout(missesPanel, 800);
+
   document.addEventListener("agente:resposta", function (e) {
     var detail = e.detail || {};
     var bots = document.querySelectorAll(".agw-msg.agw-bot");

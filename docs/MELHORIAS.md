@@ -20,10 +20,10 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 
 | # | Melhoria | Exemplo |
 | --- | --- | --- |
-| B1 | **Entidades** (slots) extraídas do catálogo: categoria, marca, cor, tamanho, faixa de preço | "tem tênis preto da Nike até 300?" filtra por 4 coisas de uma vez |
+| B1 | ✅ (0.4) **Entidades** (slots) extraídas do catálogo: categoria, marca, cor, tamanho, faixa de preço | "tem tênis preto da Nike até 300?" filtra por 4 coisas de uma vez |
 | B2 | ✅ (0.3, `fluxos.json` + modo treino) **Conversa em várias etapas** (máquina de estados configurável em `fluxos.json`): o agente pergunta o que falta | "quero um presente" → "para quem?" → "até quanto?" → 3 sugestões com o motivo |
-| B3 | **Memória da conversa**: "e o mais barato?", "e em azul?", "compara os dois" usam a última lista | Hoje só "mais opções" usa o contexto |
-| B4 | **Comparar itens** lado a lado e **recomendar com justificativa** ("este, porque cabe no orçamento e é o mais vendido") | Igual ao montador de setup da Violet Voltage, só que genérico |
+| B3 | ✅ (0.4) **Memória da conversa**: "e o mais barato?", "e em azul?", "compara os dois" usam a última lista | Hoje só "mais opções" usa o contexto |
+| B4 | ✅ (0.4, comparar) **Comparar itens** lado a lado e **recomendar com justificativa** ("este, porque cabe no orçamento e é o mais vendido") | Igual ao montador de setup da Violet Voltage, só que genérico |
 | B5 | **Ações no site**: o widget dispara eventos (`agente:adicionar-carrinho`, `agente:abrir-pagina`, `agente:preencher-formulario`) que o site escuta | O agente deixa de só responder e passa a fazer |
 | B6 | **"Você quis dizer...?"** com as 2 perguntas mais próximas quando a confiança é média | Menos "não entendi" |
 | B7 | **Passar para um humano** com o resumo da conversa (WhatsApp/e-mail pré-preenchido) | Atendimento real quando o agente não sabe |
@@ -34,7 +34,7 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 
 | # | Melhoria |
 | --- | --- |
-| C1 | **Registro das frases não entendidas**, anônimo e local (opcional: enviado ao servidor do próprio site) e comando `agent-generator aprender` que mostra os grupos e sugere onde encaixar |
+| C1 | ✅ (0.4, `aprender` + modo treino) **Registro das frases não entendidas**, anônimo e local (opcional: enviado ao servidor do próprio site) e comando `agent-generator aprender` que mostra os grupos e sugere onde encaixar |
 | C2 | ✅ (0.3, modo treino: Certo/Corrigir) Botões 👍/👎 em cada resposta, que alimentam a avaliação |
 | C3 | `avaliar --relatorio html`: painel com acerto por intenção, confusões entre intenções e frases problemáticas |
 | C4 | Gerar **frases de teste automaticamente** (variações com erro de digitação, sem acento, gírias) para a avaliação não ficar fácil demais |
@@ -52,7 +52,7 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 | # | Melhoria |
 | --- | --- |
 | E1 | ✅ **Executável com duplo clique** na pasta raiz (feito; ver [EXECUTAVEL.md](EXECUTAVEL.md)) |
-| E2 | **Interface no navegador** para editar a base (lista de perguntas, testar na hora, ver acerto) em vez de editar JSON |
+| E2 | ✅ (0.4, `editar`) **Interface no navegador** para editar a base (lista de perguntas, testar na hora, ver acerto) em vez de editar JSON |
 | E3 | Atualização incremental: rodar de novo **mescla** páginas e perguntas novas com a base editada, em vez de "manter tudo" ou "regerar tudo" |
 | E4 | Plugins para frameworks (componente React/Vue, `next.config` automático) e instalação no `layout` com confirmação |
 | E5 | Publicar no npm (`npx agent-generator`) e assinar o executável do Windows (gratuito via SignPath para código aberto) para tirar o aviso do SmartScreen |
@@ -68,7 +68,8 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 - Detalhes: [OBSERVAR-E-TREINAR.md](OBSERVAR-E-TREINAR.md).
 
 Próximos passos naturais: B1 (entidades como cor e tamanho), B3 (memória "e em azul?"), C1 (frases
-não entendidas no site publicado alimentando o treino) e E2 (editor visual da base).
+não entendidas no site publicado alimentando o treino) e E2 (editor visual da base). Feitos na 0.4:
+ver [APRENDER-E-EDITAR.md](APRENDER-E-EDITAR.md).
 
 ## Sugestão de ordem
 
