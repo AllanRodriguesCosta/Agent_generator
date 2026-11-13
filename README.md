@@ -24,6 +24,12 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
   código; a avaliação gera frases com erro de digitação, sem acento e informais, mostra os
   **assuntos que faltam** na base (horário, trocas, privacidade...) e sai em HTML
   (`avaliar --variacoes --html`). Consultas da conta funcionam também com login por token.
+- **Site já publicado, sem o código (0.6):** `site https://minhaloja.com.br` lê as páginas
+  públicas (respeitando o `robots.txt`), o catálogo (schema.org, Shopify, WooCommerce, APIs
+  públicas) e cria um **serviço pronto para publicar à parte** (Render gratuito, Docker...). O site
+  só ganha duas linhas e não sai do ar. **IA opcional** (Gemini, OpenAI ou Ollama local) só
+  reescreve o que o agente não entendeu: quem responde continua sendo a base. Ver
+  [docs/SITE-PUBLICADO.md](docs/SITE-PUBLICADO.md).
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 
@@ -107,6 +113,7 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 | `treinar [pasta]` | Parte 2: o site abre com o agente em modo treino; **Certo**/**Corrigir** em cada resposta, inclusive conversas em etapas. É o que o `agente-treinador` roda. Desde a 0.4, as frases não entendidas no site aparecem primeiro |
 | `aprender [pasta]` | Agrupa as frases que o agente não entendeu (do servidor ou exportadas do navegador) e sugere onde encaixar; `--aplicar` pergunta grupo a grupo |
 | `editar [pasta]` | Editor visual da base no navegador, com teste do rascunho, acerto e salvamento com backup |
+| `site <url> [pasta]` | Site já publicado: lê as páginas públicas e cria `agente-servico/` (serviço para publicar à parte, com IA opcional). `--max-paginas`, `--pausa`, `--navegador`, `--so-conteudo`, `--sim` |
 
 Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`, `scan`, `generate`,
 `install`, `eval`, `chat`, `ai-prompt`, `ai-apply`, `serve`.
@@ -119,7 +126,8 @@ Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`
 ## Limites (de propósito)
 
 - É um agente **simples**: responde com o que está na base (com conversas em etapas, consultas da
-  conta e memória da última lista). Não conversa livremente, não lembra de conversas antigas e não
+  conta e memória da última lista). Sem IA, não conversa livremente (com IA, ela só traduz o
+  pedido para a base), não lembra de conversas antigas e não
   faz compras ou cadastros pelo visitante; ele leva às páginas certas.
 - O raio X lê o código, não o banco de dados. Catálogo em banco: aponte `catalogo.url` para a
   rota da API que lista os itens (o raio X sugere quando encontra uma).

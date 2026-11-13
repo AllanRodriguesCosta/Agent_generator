@@ -30,6 +30,7 @@
 .agw-item-info { display: grid; }
 .agw-item-name { font-weight: 600; }
 .agw-item-price { color: var(--agw-muted); font-size: 14px; }
+.agw-note { margin: 6px 0 0; color: var(--agw-muted); font-size: 13px; font-style: italic; }
 .agw-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .agw-action { display: inline-block; padding: 6px 10px; border-radius: 999px; background: var(--agw-cor); color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; }
 .agw-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 8px; }

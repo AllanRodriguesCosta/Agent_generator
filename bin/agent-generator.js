@@ -21,6 +21,8 @@ import { evaluationHtml } from "../src/eval/html.js";
 import { createAgent } from "../src/agent/agent.js";
 import { readMissFiles, groupMisses, suggestFor, learnText, correctionFor } from "../src/learn/misses.js";
 import { startEditor } from "../src/editor/server.js";
+import { buildFromSite } from "../src/site/index.js";
+import { USER_AGENT } from "../src/crawler/index.js";
 
 const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", auto: "assistente", wizard: "assistente", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
 const WORK = "agente-gerador";
@@ -32,7 +34,7 @@ export function parseArgs(argv) {
     if (a.startsWith("--")) {
       const [k, v] = a.slice(2).split("=");
       if (v !== undefined) out.flags[k] = v;
-      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos", "arquivo"].includes(k)) out.flags[k] = argv[++i];
+      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos", "arquivo", "max-paginas", "pausa"].includes(k)) out.flags[k] = argv[++i];
       else out.flags[k] = true;
     } else out._.push(a);
   }
@@ -68,6 +70,11 @@ Comandos:
                            encaixar cada uma. Com --aplicar, pergunta grupo a grupo.
   editar [pasta]           Abre o editor da base no navegador (perguntas, intenções, páginas e
                            conversas em etapas), com teste do agente e acerto na hora.
+  site <url> [pasta]       Site JÁ PUBLICADO, sem o código: lê as páginas públicas (respeitando o
+                           robots.txt), gera a base e cria a pasta agente-servico/, um serviço
+                           pequeno para publicar à parte. O site só ganha duas linhas (widget).
+                           IA opcional (Gemini, OpenAI ou Ollama local) só reescreve o que o
+                           agente não entendeu. Pasta padrão: ./agente-<domínio>.
   ajuda                    Esta mensagem
 
 Opções:
@@ -86,6 +93,11 @@ Opções:
   --sem-navegador     (observar/treinar/editar) Não abre o navegador sozinho
   --arquivo <arq>     (aprender) Arquivo com as frases (JSON ou JSON Lines)
   --aplicar           (aprender) Aplica as sugestões, com confirmação (com --sim, só as seguras)
+  --max-paginas <n>   (site) Máximo de páginas lidas (padrão 60)
+  --pausa <ms>        (site) Pausa entre páginas (padrão 400; o robots.txt pode pedir mais)
+  --navegador         (site) Lê as páginas num navegador (sites feitos só em JavaScript; precisa do Playwright)
+  --so-conteudo       (site) Atualiza só páginas e catálogo, mantendo as edições da base
+  --sim               (site) Confirma que o site é seu ou que você tem autorização para lê-lo
 `;
 
 async function readJson(file) {
@@ -519,6 +531,68 @@ function print(ctx, value, text) {
   else if (text) console.log(text);
 }
 
+// Versão 0.6: site publicado -> serviço do agente.
+async function cmdSite(url, folder, flags) {
+  if (!url) throw new Error("Informe o endereço do site. Ex.: agent-generator site https://minhaloja.com.br");
+  let origin;
+  try {
+    origin = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+  } catch {
+    throw new Error(`Endereço inválido: ${url}`);
+  }
+  if (!flags.sim) {
+    if (!process.stdin.isTTY) throw new Error("Use --sim para confirmar que o site é seu ou que você tem autorização para lê-lo.");
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const ok = /^s/i.test(await rl.question(`O site ${origin.host} é seu ou você tem autorização para lê-lo? (s/N) `));
+    rl.close();
+    if (!ok) throw new Error("Leitura cancelada. Use só em sites seus ou com autorização.");
+  }
+  const out = resolve(folder || `agente-${origin.host.replace(/[^a-z0-9.-]/gi, "-")}`);
+  let browser = null;
+  let render;
+  if (flags.navegador) {
+    try {
+      const { chromium } = await import("playwright");
+      browser = await chromium.launch();
+      const page = await browser.newPage({ userAgent: USER_AGENT });
+      render = async (u) => {
+        await page.goto(u, { waitUntil: "networkidle", timeout: 20000 });
+        return page.content();
+      };
+    } catch {
+      throw new Error("--navegador precisa do Playwright: npm install playwright && npx playwright install chromium");
+    }
+  }
+  if (!flags.json) console.log(`Lendo ${origin.origin} (páginas públicas, respeitando o robots.txt)...`);
+  try {
+    const r = await buildFromSite(origin.href, out, {
+      maxPages: Number(flags["max-paginas"]) || 60,
+      delayMs: flags.pausa != null ? Math.max(0, Number(flags.pausa) || 0) : 400,
+      render,
+      force: Boolean(flags.forcar),
+      soConteudo: Boolean(flags["so-conteudo"]),
+      log: flags.json ? () => {} : (l) => console.log(l),
+    });
+    if (flags.json) console.log(JSON.stringify(r, null, 2));
+    else
+      console.log(
+        [
+          "",
+          `Lidas ${r.paginas} páginas e ${r.produtos} produtos${r.catalogoApi ? ` (catálogo vivo pela API ${r.catalogoApi})` : ""}; ${r.faq} perguntas frequentes.`,
+          `Serviço do agente em ${r.servico}. Acerto da base: ${r.geral}%.`,
+          "",
+          `Testar: cd "${r.servico}" && node servico.js   (depois abra http://localhost:8787)`,
+          "Publicar: veja LEIA-ME.md na pasta do serviço (Render gratuito, Docker ou outro).",
+          "No site, antes de </body>, troque SEU-SERVICO pelo endereço publicado:",
+          r.snippet,
+        ].join("\n") + notesText(r.avisos),
+      );
+    return 0;
+  } finally {
+    await browser?.close();
+  }
+}
+
 const summary = (r) =>
   `Raio X de "${r.projeto.site}" (${r.projeto.stack.join(", ") || "tipo não identificado"}): ${r.resumo.paginas} páginas, ${r.resumo.rotas} rotas, ${r.resumo.formularios} formulários, ${r.resumo.faq} perguntas frequentes, ${r.resumo.itensCatalogo} itens de catálogo.`;
 const notesText = (notes) => (notes.length ? `\nAvisos:\n${notes.map((n) => `- ${n}`).join("\n")}` : "");
@@ -530,6 +604,7 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(HELP);
     return 0;
   }
+  if (command === "site") return cmdSite(_[1], _[2], flags);
   const ctx = await context(["assistente", "observar", "treinar", "aprender", "editar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
   switch (command) {
     case "assistente": {

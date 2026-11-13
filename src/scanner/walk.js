@@ -5,7 +5,7 @@ import { join, relative, extname, basename } from "node:path";
 
 export const IGNORED_DIRS = new Set([
   "node_modules", ".git", ".hg", ".svn", "dist", "build", "out", ".next", ".nuxt", ".svelte-kit", ".output", "coverage",
-  "vendor", "venv", ".venv", "__pycache__", ".cache", ".turbo", ".vercel", ".idea", ".vscode", "target", "bin", "obj", "agente", "agente-gerador",
+  "vendor", "venv", ".venv", "__pycache__", ".cache", ".turbo", ".vercel", ".idea", ".vscode", "target", "bin", "obj", "agente", "agente-gerador", "agente-servico",
 ]);
 export const SECRET_FILE = /^(\.env(\..*)?|.*\.(pem|key|p12|pfx|crt)|id_rsa.*|.*secret.*|.*credenciais.*|.*credentials.*)$/i;
 export const TEXT_EXT = new Set([".html", ".htm", ".md", ".mdx", ".txt", ".json", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".astro", ".py", ".php", ".erb", ".ejs", ".hbs", ".njk", ".liquid", ".csv", ".xml"]);

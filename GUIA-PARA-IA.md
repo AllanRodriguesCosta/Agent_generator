@@ -102,3 +102,19 @@ Se a pessoa não tiver o prompt, peça que rode primeiro:
   sessão). Não use em servidor público: é uma ferramenta local.
 - O agente já entende cor/marca/tamanho do catálogo e "e em azul?", "o mais barato", "compara os
   dois"; não é preciso criar intenções para isso.
+
+## Versão 0.6: site já publicado (sem o código)
+
+```bash
+# Lê as páginas públicas e cria a pasta com o serviço (use só em sites do usuário; --sim confirma).
+node $AG/bin/agent-generator.js site https://site-do-usuario.com.br ./agente-site --sim --json
+# Testar o serviço gerado
+cd ./agente-site/agente-servico && ORIGENS=https://site-do-usuario.com.br node servico.js
+# Atualizar só páginas e catálogo, mantendo as edições da base
+node $AG/bin/agent-generator.js site https://site-do-usuario.com.br ./agente-site --sim --so-conteudo
+```
+
+- Passe ao usuário as duas linhas do widget (o JSON traz `snippet`) e, se `csp` vier `true`, o
+  aviso de Content-Security-Policy que está em `avisos`.
+- IA opcional só no serviço, por variáveis (`IA_PROVEDOR`, `IA_CHAVE`, `IA_MODELO`, `IA_URL`);
+  nunca grave chaves em arquivos. Detalhes: [docs/SITE-PUBLICADO.md](docs/SITE-PUBLICADO.md).

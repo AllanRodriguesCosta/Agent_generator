@@ -107,7 +107,9 @@ export async function mount(options = {}) {
   const raw = await loadKnowledge(base);
   let agent = createAgent(raw);
   const { agente } = agent.knowledge;
-  const endpoint = agente.endpoint;
+  // Versão 0.6: endpoint relativo ("../api/agente") é resolvido a partir do próprio widget, para o
+  // modo serviço (agente hospedado à parte, ao lado de um site já publicado).
+  const endpoint = agente.endpoint && agente.endpoint.startsWith(".") ? new URL(agente.endpoint, base).href : agente.endpoint;
   const state = load();
 
   const root = el("div", { class: `agw-root agw-${agente.posicao}` });
@@ -141,6 +143,7 @@ export async function mount(options = {}) {
   function bubble(msg) {
     const item = el("div", { class: `agw-msg agw-${msg.de}`, ...(msg.intencao ? { "data-intencao": msg.intencao } : {}) });
     item.append(el("p", {}, msg.texto));
+    if (msg.interpretado) item.append(el("p", { class: "agw-note" }, `Entendi como “${msg.interpretado}”.`));
     if (msg.itens?.length) {
       const list = el("ul", { class: "agw-items" });
       for (const it of msg.itens) {
@@ -215,7 +218,7 @@ export async function mount(options = {}) {
       if (texto && agente.registro && !endpoint)
         fetch(agente.registro, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mensagem: texto, falta: true }) }).catch(() => {});
     }
-    const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [], intencao: r.intencao || "" };
+    const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [], intencao: r.intencao || "", ...(typeof r.interpretado === "string" ? { interpretado: r.interpretado.slice(0, 160) } : {}) };
     state.mensagens.push(bot);
     state.contexto = r.contexto || {};
     bubble(bot);

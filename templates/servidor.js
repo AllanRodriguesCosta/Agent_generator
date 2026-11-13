@@ -6,6 +6,7 @@
 import { readFile, appendFile } from "node:fs/promises";
 import { createAgent } from "./nucleo/agent.js";
 import { anonymize, isMiss } from "./nucleo/privacy.js";
+import { iaConfig, withIa } from "./nucleo/ia.js";
 
 const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
 
@@ -41,9 +42,12 @@ async function logMiss(file, frase) {
 }
 
 // Handler para Express ou http puro: recebe { mensagem, contexto } e devolve a resposta em JSON.
-export async function createChatHandler({ dir, faltas = new URL("./faltas.jsonl", import.meta.url) } = {}) {
-  const agent = createAgent(await loadKnowledgeFromDisk(dir));
-  return async (req, res) => {
+// Versão 0.6: com IA_PROVEDOR (gemini ou openai) no ambiente, o que o agente não entende vai à IA,
+// que só reescreve o pedido; quem responde continua sendo a base (ver nucleo/ia.js).
+// "agente" (opcional) permite trocar a base em uso (o serviço atualiza o catálogo sozinho).
+export async function createChatHandler({ dir, faltas = new URL("./faltas.jsonl", import.meta.url), env = process.env, fetchImpl, agente } = {}) {
+  const holder = agente || { atual: withIa(createAgent(await loadKnowledgeFromDisk(dir)), iaConfig(env), { fetchImpl }) };
+  const handler = async (req, res) => {
     let body = req.body;
     if (body === undefined) {
       let raw = "";
@@ -69,8 +73,11 @@ export async function createChatHandler({ dir, faltas = new URL("./faltas.jsonl"
       if (faltas) await logMiss(faltas, body.mensagem.slice(0, 500));
       return send(202, { ok: true });
     }
-    const r = agent.reply(body.mensagem.slice(0, 500), sanitizeContext(body.contexto));
-    if (faltas && isMiss(r)) await logMiss(faltas, body.mensagem);
+    const r = await holder.atual.replyAsync(body.mensagem.slice(0, 500), sanitizeContext(body.contexto));
+    if (faltas && (isMiss(r) || r.faltaLocal)) await logMiss(faltas, body.mensagem);
+    delete r.faltaLocal;
     return send(200, r);
   };
+  handler.agente = holder;
+  return handler;
 }
