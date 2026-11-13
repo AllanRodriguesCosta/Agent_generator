@@ -61,10 +61,16 @@ function extract(pkg, base) {
 
 // Duplo clique: sem argumentos -> assistente na pasta do executável.
 // Pasta arrastada sobre o executável -> assistente nessa pasta. Qualquer outra coisa -> CLI normal.
-function resolveArgs(args, exeDir, isDir = (p) => fs.existsSync(p) && fs.statSync(p).isDirectory()) {
-  if (!args.length) return ["assistente", exeDir];
-  if (args.length === 1 && !args[0].startsWith("-") && isDir(args[0])) return ["assistente", args[0]];
-  if (args.every((a) => a.startsWith("--"))) return ["assistente", exeDir, ...args];
+// Parte 2: o mesmo executável com "treinador" no nome abre o modo treino (comando treinar).
+function defaultCommand(exeName = "") {
+  return /treinador|trainer/i.test(path.basename(String(exeName))) ? "treinar" : "assistente";
+}
+function resolveArgs(args, exeDir, isDir = (p) => fs.existsSync(p) && fs.statSync(p).isDirectory(), exeName = "") {
+  const command = defaultCommand(exeName);
+  if (!args.length) return [command, exeDir];
+  if (args.length === 1 && !args[0].startsWith("-") && isDir(args[0])) return [command, args[0]];
+  // Só opções (inclusive com valor, como "--minutos 2"): o comando padrão na pasta do executável.
+  if (args[0].startsWith("--")) return [command, exeDir, ...args];
   return args;
 }
 
@@ -79,14 +85,14 @@ async function run() {
   const dir = extract(pkg, cacheBase());
   // No executável, a pasta dele; rodando com "node sea/launcher.cjs" (testes), a pasta atual.
   const exeDir = seaModule() ? path.dirname(process.execPath) : process.cwd();
-  const args = resolveArgs(process.argv.slice(2), exeDir);
+  const args = resolveArgs(process.argv.slice(2), exeDir, undefined, seaModule() ? process.execPath : process.env.AGENTE_NOME || "");
   // require() de módulo ES (Node 22.12+), a partir da pasta extraída.
   const cli = createRequire(path.join(dir, "package.json"))("./bin/agent-generator.js");
   const code = await cli.main(args);
   if (code != null) process.exitCode = code;
 }
 
-module.exports = { cacheBase, extract, resolveArgs, hashOf };
+module.exports = { cacheBase, extract, resolveArgs, hashOf, defaultCommand };
 
 if (seaModule() || require.main === module) {
   run().catch(async (error) => {

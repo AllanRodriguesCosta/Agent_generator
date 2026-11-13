@@ -8,11 +8,11 @@ coisa**. Ele leva o Node e o agent-generator dentro de um único arquivo.
 
 Na página **Releases** do repositório (lado direito do GitHub), baixe o arquivo do seu sistema:
 
-| Sistema | Arquivo |
-| --- | --- |
-| Windows 10/11 (64 bits) | `agente-gerador-windows.exe` |
-| Linux (64 bits) | `agente-gerador-linux` |
-| macOS (Apple Silicon: M1, M2, M3...) | `agente-gerador-macos` |
+| Sistema | Parte 1 (cria o agente) | Parte 2 (treina o agente) |
+| --- | --- | --- |
+| Windows 10/11 (64 bits) | `agente-gerador-windows.exe` | `agente-treinador-windows.exe` |
+| Linux (64 bits) | `agente-gerador-linux` | `agente-treinador-linux` |
+| macOS (Apple Silicon: M1, M2, M3...) | `agente-gerador-macos` | `agente-treinador-macos` |
 
 Cada arquivo tem de 80 a 120 MB, porque leva o Node dentro.
 
@@ -36,6 +36,14 @@ Cada arquivo tem de 80 a 120 MB, porque leva o Node dentro.
 4/5  Acerto: 100%
 5/5  Abrir o site no navegador agora, com o agente? [S/n]
 ```
+
+Depois do passo 4, ele pergunta se você quer **mostrar o site funcionando por alguns minutos**:
+o navegador abre num endereço local e o agente aprende com o que você usar (páginas, busca,
+formulários e, se você entrar na sua conta, a consulta de pedidos). Termine no botão **Concluir**.
+
+**Parte 2:** com o agente já no site, dê dois cliques no `agente-treinador`. O site abre com o
+agente em modo treino: converse com ele e use **Certo**/**Corrigir** em cada resposta. Tudo em
+[OBSERVAR-E-TREINAR.md](OBSERVAR-E-TREINAR.md).
 
 No final fica um resumo em `agente-gerador/RESUMO.txt`, com tudo o que foi feito e os próximos
 passos.

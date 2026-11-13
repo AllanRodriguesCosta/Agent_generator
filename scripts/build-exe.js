@@ -15,8 +15,9 @@ const DIST = join(ROOT, "dist");
 export const INCLUDE = ["bin", "src", "widget", "templates", "package.json", "LICENSE"];
 const FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
 
-export function exeName(platform = process.platform) {
-  return platform === "win32" ? "agente-gerador-windows.exe" : platform === "darwin" ? "agente-gerador-macos" : "agente-gerador-linux";
+export function exeName(platform = process.platform, parte = "gerador") {
+  const base = `agente-${parte}`;
+  return platform === "win32" ? `${base}-windows.exe` : platform === "darwin" ? `${base}-macos` : `${base}-linux`;
 }
 
 async function collect(path, out) {
@@ -90,7 +91,12 @@ export async function buildExe() {
     ...(mac ? ["--macho-segment-name", "NODE_SEA"] : []),
   ]);
   if (mac) run("codesign", ["--sign", "-", exe]);
-  console.log(`\nExecutável pronto: ${exe}`);
+  // Parte 2: mesmo binário com outro nome; o launcher vê "treinador" no nome e abre o treino.
+  const trainer = join(DIST, exeName(process.platform, "treinador"));
+  await rm(trainer, { force: true });
+  await copyFile(exe, trainer);
+  if (!win) await chmod(trainer, 0o755);
+  console.log(`\nExecutáveis prontos: ${exe} e ${trainer}`);
   return exe;
 }
 

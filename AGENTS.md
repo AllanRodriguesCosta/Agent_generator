@@ -10,4 +10,6 @@
   - Toda mudança de comportamento vem com teste em `tests/`. Rode `npm test` antes de abrir PR.
   - Textos para o usuário em português do Brasil.
   - Executável: `sea/launcher.cjs` (entrada CommonJS do Node SEA; extrai o pacote para o cache e chama `main` do CLI), `scripts/build-exe.js` (`npm run build:exe`), fluxo guiado em `src/cli/assistente.js`. Tudo o que o CLI precisa em tempo de execução tem de estar em `bin/`, `src/`, `widget/` ou `templates/` (lista `INCLUDE`). Detalhes: [docs/EXECUTAVEL.md](docs/EXECUTAVEL.md).
+  - Observação e treino (0.3): `src/observe/` (proxy local `proxy.js`, registro sem dado pessoal `record.js`, aprendizado `learn.js`, sessão `session.js`; scripts de navegador em `src/observe/client/`, clássicos, só `textContent` e estilos via CSSOM) e `src/train/apply.js` (correções puras). O proxy só aceita destino `http://localhost` e nunca guarda cookie/token; o agente nunca executa POST/PUT/DELETE pelo visitante. Detalhes: [docs/OBSERVAR-E-TREINAR.md](docs/OBSERVAR-E-TREINAR.md).
+  - Base com 7 arquivos (`KNOWLEDGE_FILES`): os dois novos, `fluxos` e `consultas`, são conferidos em `src/agent/knowledge.js`; o resumo das consultas fica em `src/agent/lookup.js` (núcleo, também no navegador).
   - Roadmap: [docs/MELHORIAS.md](docs/MELHORIAS.md).

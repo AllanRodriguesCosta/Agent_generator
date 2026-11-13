@@ -6,7 +6,7 @@
 import { readFile } from "node:fs/promises";
 import { createAgent } from "./nucleo/agent.js";
 
-const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo"];
+const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
 
 export async function loadKnowledgeFromDisk(dir = new URL("./conhecimento/", import.meta.url)) {
   const raw = {};
@@ -24,6 +24,7 @@ const sanitizeContext = (c) => ({
   ...(Number.isInteger(c?.voltas) && c.voltas >= 0 && c.voltas < 10000 ? { voltas: c.voltas } : {}),
   ...(typeof c?.busca === "string" ? { busca: c.busca.slice(0, 200) } : {}),
   ...(Number.isInteger(c?.pagina) && c.pagina >= 0 && c.pagina <= 20 ? { pagina: c.pagina } : {}),
+  ...(typeof c?.fluxo === "string" && /^[a-z0-9-]{1,60}$/.test(c.fluxo) ? { fluxo: c.fluxo } : {}),
 });
 
 // Handler para Express ou http puro: recebe { mensagem, contexto } e devolve a resposta em JSON.
