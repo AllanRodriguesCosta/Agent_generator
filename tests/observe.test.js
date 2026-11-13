@@ -178,7 +178,7 @@ test("executável em duas partes: com “treinador” no nome abre o treino", ()
   assert.equal(defaultCommand("C:\\Users\\a\\agente-treinador-windows.exe"), "treinar");
   assert.equal(defaultCommand("/x/agente-gerador-linux"), "assistente");
   assert.deepEqual(resolveArgs([], "/site", isDir, "/site/agente-treinador-linux"), ["treinar", "/site"]);
-  assert.deepEqual(resolveArgs(["--url", "x"].filter((a) => a.startsWith("--")), "/site", isDir, "agente-treinador-macos"), ["treinar", "/site", "--url"]);
+  assert.deepEqual(resolveArgs(["--minutos", "2", "--sem-pausa"], "/site", isDir, "agente-treinador-macos"), ["treinar", "/site", "--minutos", "2", "--sem-pausa"]);
 });
 
 test("comando observar de ponta a ponta: sessão encerrada pelo botão, base atualizada com backup", async (t) => {

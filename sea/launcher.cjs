@@ -69,7 +69,8 @@ function resolveArgs(args, exeDir, isDir = (p) => fs.existsSync(p) && fs.statSyn
   const command = defaultCommand(exeName);
   if (!args.length) return [command, exeDir];
   if (args.length === 1 && !args[0].startsWith("-") && isDir(args[0])) return [command, args[0]];
-  if (args.every((a) => a.startsWith("--"))) return [command, exeDir, ...args];
+  // Só opções (inclusive com valor, como "--minutos 2"): o comando padrão na pasta do executável.
+  if (args[0].startsWith("--")) return [command, exeDir, ...args];
   return args;
 }
 
