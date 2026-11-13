@@ -26,7 +26,8 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
 - `limiar` (0,3 a 0,95): confiança mínima para responder por intenção. Maior = mais cauteloso.
 - `cor`: hexadecimal de 6 dígitos. `posicao`: `"direita"` ou `"esquerda"`.
 - `endpoint`: vazio = o agente roda no navegador. Com `"/api/agente"`, o widget pergunta ao seu
-  servidor (veja `agente/servidor.js`).
+  servidor (veja `agente/servidor.js`). Começando com `.` (ex.: `"../api/agente"`, versão 0.6), é
+  relativo ao endereço do próprio widget: é o que o modo serviço (`site`) usa.
 - `registro` (0.4): para onde o widget manda as frases que não entendeu, ex.: `"/api/agente"` (o
   `servidor.js` grava em `agente/faltas.jsonl`). Vazio = ficam só no navegador da pessoa
   (`agente.faltas()` no console; `agente.exportarFaltas()` baixa o JSON para o comando `aprender`).

@@ -43,8 +43,8 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 
 | # | Melhoria | Custo |
 | --- | --- | --- |
-| D1 | **Plano B com IA** só quando o agente local não entende, usando como contexto apenas a base (RAG) e com conferência ("só responda com o que está no texto") | Gemini gratuito (chave do dono do site, no servidor `templates/servidor.js`, nunca no navegador) |
-| D2 | **Modelo pequeno rodando no navegador** (WebLLM/Transformers.js) ou local (Ollama) para quem não quer chave nenhuma | Zero, mas pesado para celulares |
+| D1 | ✅ (0.6, `src/agent/ia.js`: a IA reescreve a frase e a base responde; resposta livre opcional) **Plano B com IA** só quando o agente local não entende, usando como contexto apenas a base (RAG) e com conferência ("só responda com o que está no texto") | Gemini gratuito (chave do dono do site, no servidor `templates/servidor.js`, nunca no navegador) |
+| D2 | ✅ em parte (0.6: Ollama/LM Studio locais pelo provedor `openai`) **Modelo pequeno rodando no navegador** (WebLLM/Transformers.js) ou local (Ollama) para quem não quer chave nenhuma | Zero, mas pesado para celulares |
 | D3 | **Busca semântica** com embeddings pré-calculados na geração (o visitante não baixa modelo) | Zero |
 
 ## E. Ferramenta (o "apk")
@@ -70,6 +70,24 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 Próximos passos naturais: B1 (entidades como cor e tamanho), B3 (memória "e em azul?"), C1 (frases
 não entendidas no site publicado alimentando o treino) e E2 (editor visual da base). Feitos na 0.4:
 ver [APRENDER-E-EDITAR.md](APRENDER-E-EDITAR.md).
+
+## G. Feito na 0.6: site publicado e IA que só traduz
+
+- `site <url>`: leitura das páginas públicas (robots.txt, sitemap, JSON-LD, Shopify, WooCommerce,
+  APIs públicas), espelho + raio X, e pasta `agente-servico/` pronta para publicar à parte, com
+  CORS, catálogo vivo, `render.yaml`, Dockerfile e Action semanal (`--so-conteudo`). Aviso de CSP.
+- IA opcional e trocável (Gemini, OpenAI, Ollama) que só reescreve o que o agente não entendeu.
+
+Para concluir a visão "plataforma pronta para IA" (próximas versões):
+
+| # | Melhoria |
+| --- | --- |
+| G1 | **Catálogo de ações**: gerar `acoes.json` com cada coisa que o site permite (buscar, ver item, ver pedido, frete...), parâmetros validados e permissão (público, logado). A IA passa a escolher a ação, não só a frase |
+| G2 | **Servidor MCP** no serviço, expondo as mesmas ações para outros assistentes de IA |
+| G3 | IA também quando a **confiança local é baixa** (falsos entendimentos), aceitando a reescrita só se o agente concordar (na Violet Voltage, "interpretar sempre" chegou a 19/20) |
+| G4 | **Verificação de domínio** (arquivo ou meta tag) antes de ler um site, para uso como serviço hospedado |
+| G5 | Painel do dono no serviço: o que perguntam, o que não foi entendido, conversas que viraram clique em produto |
+| G6 | Faltas persistentes em hospedagem gratuita (enviar para um armazenamento grátis ou para o repositório pela Action) |
 
 ## Sugestão de ordem
 

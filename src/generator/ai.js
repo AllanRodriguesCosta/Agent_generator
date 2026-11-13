@@ -153,7 +153,7 @@ export function mergeAi(knowledge, suggestion) {
 }
 
 // Gemini (plano gratuito). Sem SDK: fetch nativo. A chave vem do ambiente e nunca é gravada.
-export async function askGemini(prompt, { apiKey, model = "gemini-flash-latest", fetchImpl = fetch, timeoutMs = 60000 } = {}) {
+export async function askGemini(prompt, { apiKey, model = "gemini-3.5-flash-lite", fetchImpl = fetch, timeoutMs = 60000 } = {}) {
   if (!apiKey) throw new Error("Defina GEMINI_API_KEY (chave gratuita em aistudio.google.com).");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const res = await fetchImpl(url, {
