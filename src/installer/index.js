@@ -6,8 +6,8 @@ import { join, resolve, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-export const CORE_FILES = ["text.js", "classifier.js", "search.js", "knowledge.js", "agent.js", "catalog-map.js"];
-export const KNOWLEDGE_FILES = ["agente", "intencoes", "faq", "paginas", "catalogo"];
+export const CORE_FILES = ["text.js", "classifier.js", "search.js", "knowledge.js", "agent.js", "catalog-map.js", "lookup.js"];
+export const KNOWLEDGE_FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
 export const MARKER = "<!-- agente: agent-generator -->";
 
 const exists = async (p) => access(p).then(() => true, () => false);
@@ -44,6 +44,7 @@ export async function writeKnowledge(targetDir, knowledge, { force = false } = {
       kept.push(file);
       continue;
     }
+    if (knowledge[name] === undefined) continue;
     await writeFile(file, json(knowledge[name]));
     written.push(file);
   }

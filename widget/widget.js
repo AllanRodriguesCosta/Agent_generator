@@ -5,8 +5,9 @@
 // Configuração em conhecimento/agente.json. Opcional: window.AGENTE_CONFIG = { aberto: true }.
 import { createAgent } from "./nucleo/agent.js";
 import { mapItems } from "./nucleo/catalog-map.js";
+import { describeLookup } from "./nucleo/lookup.js";
 
-const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo"];
+const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
 const STORE = "agente_widget_v1";
 const MAX_HISTORY = 30;
 
@@ -32,7 +33,8 @@ export async function loadKnowledge(base, fetchImpl = fetch) {
   const entries = await Promise.all(
     FILES.map(async (name) => {
       try {
-        const res = await fetchImpl(new URL(`conhecimento/${name}.json`, base));
+        // Sem cache: depois de um treino (comando treinar) a base nova vale na hora.
+        const res = await fetchImpl(new URL(`conhecimento/${name}.json`, base), { cache: "no-store" });
         return [name, res.ok ? await res.json() : undefined];
       } catch {
         return [name, undefined];
@@ -80,7 +82,7 @@ export async function mount(options = {}) {
   if (document.querySelector(".agw-root")) return;
   const base = new URL(".", import.meta.url);
   const raw = await loadKnowledge(base);
-  const agent = createAgent(raw);
+  let agent = createAgent(raw);
   const { agente } = agent.knowledge;
   const endpoint = agente.endpoint;
   const state = load();
@@ -114,7 +116,7 @@ export async function mount(options = {}) {
     }));
   }
   function bubble(msg) {
-    const item = el("div", { class: `agw-msg agw-${msg.de}` });
+    const item = el("div", { class: `agw-msg agw-${msg.de}`, ...(msg.intencao ? { "data-intencao": msg.intencao } : {}) });
     item.append(el("p", {}, msg.texto));
     if (msg.itens?.length) {
       const list = el("ul", { class: "agw-items" });
@@ -171,7 +173,19 @@ export async function mount(options = {}) {
     } catch {
       r = { texto: "Não consegui responder agora. Tente de novo em instantes.", sugestoes: [] };
     }
-    const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [] };
+    // Consulta da conta (pedidos, agendamentos...): lê a API do próprio site com a sessão de quem
+    // está logado e resume. Só caminhos do próprio site (a base já recusa outros domínios).
+    if (r.consulta?.url) {
+      let lookup;
+      try {
+        const res = await fetch(new URL(r.consulta.url, location.href), { credentials: "same-origin", headers: { accept: "application/json" } });
+        lookup = describeLookup(r.consulta, { status: res.status, dados: res.ok ? await res.json().catch(() => null) : null }, agent.knowledge.agente);
+      } catch {
+        lookup = describeLookup(r.consulta, { status: 0 }, agent.knowledge.agente);
+      }
+      r = { ...r, texto: lookup.texto, acoes: lookup.acoes };
+    }
+    const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [], intencao: r.intencao || "" };
     state.mensagens.push(bot);
     state.contexto = r.contexto || {};
     bubble(bot);
@@ -179,7 +193,13 @@ export async function mount(options = {}) {
     // As sugestões mudam a altura da conversa: rola de novo para a última mensagem.
     log.scrollTop = log.scrollHeight;
     save(state);
+    // Para o modo treino (e para quem quiser medir): pergunta, resposta e intenção.
+    document.dispatchEvent(new CustomEvent("agente:resposta", { detail: { pergunta: clean, resposta: r.texto, intencao: r.intencao || "", fonte: r.fonte || "" } }));
   }
+  // Base alterada (modo treino): recarrega e recria o agente sem recarregar a página.
+  document.addEventListener("agente:recarregar", async () => {
+    agent = createAgent(await loadKnowledge(base));
+  });
   function setOpen(open) {
     panel.hidden = !open;
     launcher.setAttribute("aria-expanded", String(open));

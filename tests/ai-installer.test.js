@@ -71,11 +71,11 @@ test("instalação: pasta pública detectada, núcleo + widget copiados, base pr
   const first = await install(site, knowledge, { target });
   assert.deepEqual((await readdir(join(site, "agente", "nucleo"))).sort(), [...CORE_FILES].sort());
   for (const f of ["widget.js", "widget.css", "servidor.js", "LEIA-ME.md"]) assert.ok((await readdir(join(site, "agente"))).includes(f), f);
-  assert.equal(first.written.length, 5);
+  assert.equal(first.written.length, 7);
   const faqFile = join(site, "agente", "conhecimento", "faq.json");
   await writeFile(faqFile, "[]\n");
   const second = await install(site, knowledge, { target });
-  assert.equal(second.kept.length, 5);
+  assert.equal(second.kept.length, 7);
   assert.equal(await readFile(faqFile, "utf8"), "[]\n", "edição manual preservada");
   const a = await injectTags(site, "/agente/");
   assert.equal(a.changed.length, 5);

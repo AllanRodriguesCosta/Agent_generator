@@ -113,9 +113,21 @@ export async function runAssistant({ project, work, io, steps, hasGemini = false
       io.print(`     Gemini não respondeu (${error.message}). A base sem IA continua valendo.`);
     }
   }
+  // Observação (0.3): a pessoa usa o site por alguns minutos e o agente aprende com isso.
+  if (steps.observar && (await io.ask("\n     Quer me mostrar o site funcionando por alguns minutos? Eu abro o navegador e aprendo com as páginas,\n     buscas e formulários que você usar (entre na sua conta para eu aprender a consultar pedidos).", true, { soInterativo: true }))) {
+    try {
+      const o = await steps.observar();
+      const c = o.changes;
+      done.push(`Observação: ${c.paginas.length} página(s) e ${c.faq.length} pergunta(s) novas${c.buscas.length ? ", busca do site" : ""}${c.dados.length ? `, consulta de ${c.dados.join(", ")}` : ""}${c.catalogo ? ", catálogo da API" : ""} (agente-gerador/OBSERVACAO.txt).`);
+      ev = { ...ev, geral: o.geral };
+    } catch (error) {
+      io.print(`     Observação não concluída: ${error.message}`);
+    }
+  }
   done.push(`Acerto da base: ${ev.geral ?? "-"}% (agente-gerador/avaliacao.txt).`);
 
   const next = [
+    "Parte 2: com o agente no site, rode o agente-treinador (ou: agent-generator treinar). Você conversa com o agente e corrige cada resposta na hora, inclusive criando conversas em etapas.",
     "Edite as respostas em " + `${rel(inst.dir)}/conhecimento/*.json (faq.json é o mais importante).`,
     "Para melhorar com uma IA de chat: cole agente-gerador/PROMPT-IA.md na IA e rode o comando aplicar-ia.",
     "Quando o site mudar, rode de novo: sem regerar, o que você editou fica; regerando, a base atual vai para agente-gerador/backup.",

@@ -71,11 +71,22 @@ jobs:
           grep -q "Café Aurora" conversa.txt
           "./$EXE" ajuda > ajuda.txt
           grep -q "assistente" ajuda.txt
+          # Parte 2: o mesmo binário com "treinador" no nome abre o modo treino.
+          TRAINER="${EXE/agente-gerador/agente-treinador}"
+          cp "$GITHUB_WORKSPACE/dist/$TRAINER" .
+          "./$TRAINER" --sem-navegador --minutos 2 --sem-pausa > treino.txt 2>&1 &
+          PID=$!
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:4710/__agente-gerador/gravador.js > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:4710/ | grep -q "__agente-gerador/treino.js"
+          curl -sf -X POST http://127.0.0.1:4710/__agente-gerador/fim
+          wait $PID || { cat treino.txt; exit 1; }
+          cat treino.txt
+          grep -q "Treino do agente" agente-gerador/TREINO.txt
       - name: Diagnóstico (só em caso de falha)
         if: failure()
         shell: bash
         run: |
           SITE="$RUNNER_TEMP/site com espaço"
           ls -la "$SITE" dist || true
-          diag=$( { cat "$SITE/saida.txt" "$SITE/conversa.txt" "$SITE/ajuda.txt"; ls -la "$SITE"; } 2>&1 | tail -c 5000 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          diag=$( { cat "$SITE/saida.txt" "$SITE/conversa.txt" "$SITE/ajuda.txt" "$SITE/treino.txt"; ls -la "$SITE"; } 2>&1 | tail -c 5000 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
           echo "::error title=diagnostico::$diag"

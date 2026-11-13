@@ -1,6 +1,6 @@
 # Formato da base de conhecimento (versão 1)
 
-Cinco arquivos JSON em `agente/conhecimento/`. Todos são opcionais; o que faltar vira padrão. Ao
+Sete arquivos JSON (os dois últimos, `fluxos.json` e `consultas.json`, desde a 0.3) em `agente/conhecimento/`. Todos são opcionais; o que faltar vira padrão. Ao
 carregar, o agente confere tudo: corta textos longos, descarta links perigosos (`javascript:`,
 `data:`) e ignora entradas incompletas (o comando `avaliar` lista o que foi ignorado).
 
@@ -87,3 +87,52 @@ começos de palavra ("pag" → "pagamento") são aceitos.
   descobre os campos sozinho (`nome`/`name`/`title`, `preco`/`price`/`priceCents`...). Para forçar:
   `"campos": { "nome": "titulo", "preco": "valor" }`. Para montar o link de cada item:
   `"linkModelo": "/produto.html?id={id}"`.
+
+## fluxos.json (0.3): conversa em etapas
+
+```json
+[
+  {
+    "id": "entrega",
+    "gatilhos": ["como funciona a entrega", "vocês entregam?", "qual o prazo de entrega"],
+    "pergunta": "Você prefere entrega ou retirada?",
+    "opcoes": [
+      { "rotulo": "Entrega", "resposta": "Entregamos em 2 dias úteis.", "proximo": "regiao" },
+      { "rotulo": "Retirada na loja", "resposta": "Fica pronto em 1 hora.", "acoes": [{ "rotulo": "Ver endereço", "href": "/contato" }] }
+    ]
+  }
+]
+```
+
+- Pelo menos 2 gatilhos, 1 pergunta e 2 opções (até 8). Os gatilhos entram no classificador.
+- A resposta da pessoa escolhe a opção pelo texto do botão, por parte dele ("retirada") ou pela
+  posição ("a primeira").
+- `proximo`: id de outro fluxo, para encadear perguntas.
+- O modo treino (`agent-generator treinar`) cria fluxos sem editar JSON.
+
+## consultas.json (0.3): busca do site e dados da conta
+
+```json
+{
+  "login": "/entrar",
+  "buscas": [{ "id": "busca-do-site", "rotulo": "site", "modelo": "/busca?q={termo}" }],
+  "dados": [
+    {
+      "id": "pedidos",
+      "rotulo": "pedidos",
+      "url": "/api/orders",
+      "exemplos": ["onde está meu pedido", "status do meu pedido", "minha compra chegou?"],
+      "campos": { "status": "status", "data": "createdAt", "codigo": "id", "total": "totalCents" },
+      "pagina": "/minha-conta"
+    }
+  ]
+}
+```
+
+- `buscas[].modelo`: caminho do próprio site com `{termo}`. "Procurar X" vira um botão com o link.
+- `dados[].url`: rota GET do próprio site que lista registros da pessoa logada. O widget chama com
+  a sessão (cookie) dela; 401/403 viram "entre na sua conta" com o botão de `login`.
+- `campos` é opcional: sem ele, o agente descobre código, status, data, total e nome pelos nomes
+  mais comuns (`status`, `situacao`, `createdAt`, `total`, `totalCents`...). Campo com `cents` no
+  nome é dividido por 100.
+- A observação (`agent-generator observar`) preenche este arquivo sozinha.

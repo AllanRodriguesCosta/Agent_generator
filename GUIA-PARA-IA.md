@@ -66,12 +66,17 @@ Leia do JSON: `relatorio` (quantas páginas/FAQ/itens), `destino`, `snippet`, `i
 6. **Testar no navegador**, se puder: suba o site (`npm run dev` do projeto ou
    `node $AG/bin/agent-generator.js servir $PROJ` para HTML estático), clique em "Ajuda" e faça 3
    perguntas. O console não deve mostrar erros.
+6b. **Observar e treinar (opcional, precisa de navegador e de uma pessoa):** com o site rodando,
+   `node $AG/bin/agent-generator.js observar $PROJ --url http://localhost:PORTA` e peça para a pessoa
+   navegar, buscar, entrar na conta e clicar em **Concluir**; depois `treinar` para ela corrigir as
+   respostas no próprio site. Sem pessoa disponível, pule (ou escreva `fluxos.json` e
+   `consultas.json` à mão pelo [formato](docs/FORMATO-DA-BASE.md)).
 7. **Entregar:** um commit (ou PR) com `agente/` (ou `public/agente/`), as linhas do widget e,
    se a pessoa quiser, `agente-gerador/relatorio.json` e `avaliacao.txt`. Explique à pessoa onde
    editar os textos (`agente/conhecimento/`).
 
 **Repositório remoto sem terminal** (só leitura/escrita de arquivos): não dá para rodar o
-comando. Clone e rode localmente, ou monte os 5 arquivos de `conhecimento/` à mão pelo formato,
+comando. Clone e rode localmente, ou monte os arquivos de `conhecimento/` (5 obrigatórios; `fluxos` e `consultas` opcionais) à mão pelo formato,
 copie `src/agent/*.js` para `agente/nucleo/`, `widget/widget.*` para `agente/` e adicione as duas
 linhas do widget.
 

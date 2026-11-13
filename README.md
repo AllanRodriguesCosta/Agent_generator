@@ -11,6 +11,9 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
   conhecimento em JSON (editável à mão), instala o widget e mostra a porcentagem de acerto.
 - **Funciona com qualquer site:** HTML estático, React, Vite, Next.js, Vue, Nuxt, SvelteKit,
   Angular, Astro, Express, Flask, Django, Laravel...
+- **Aprende com você usando o site (0.3):** o executável observa alguns minutos de uso real e,
+  na parte 2 (`agente-treinador`), você conversa com o agente no próprio site e corrige cada
+  resposta com um clique. Ver [docs/OBSERVAR-E-TREINAR.md](docs/OBSERVAR-E-TREINAR.md).
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 
@@ -90,6 +93,8 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 | `aplicar-ia <pasta> <arquivo>` | Junta a resposta da IA à base, com conferência e backup |
 | `gemini <pasta>` | Igual aos dois acima, automático, com `GEMINI_API_KEY` (plano gratuito) |
 | `servir <pasta>` | Servidor local para sites HTML estáticos |
+| `observar [pasta]` | Parte 1+: você usa o site por alguns minutos e o agente aprende (páginas reais, formulários, busca, login, catálogo da API, consulta de pedidos). `--url`, `--minutos` |
+| `treinar [pasta]` | Parte 2: o site abre com o agente em modo treino; **Certo**/**Corrigir** em cada resposta, inclusive conversas em etapas. É o que o `agente-treinador` roda |
 
 Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`, `scan`, `generate`,
 `install`, `eval`, `chat`, `ai-prompt`, `ai-apply`, `serve`.
@@ -101,11 +106,14 @@ Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`
 
 ## Limites (de propósito)
 
-- É um agente **simples**: responde com o que está na base. Não conversa livremente, não lembra de
-  conversas antigas e não faz compras ou cadastros pelo visitante; ele leva às páginas certas.
+- É um agente **simples**: responde com o que está na base (agora também com conversas em etapas e
+  consultas da conta). Não conversa livremente, não lembra de conversas antigas e não faz compras
+  ou cadastros pelo visitante; ele leva às páginas certas.
 - O raio X lê o código, não o banco de dados. Catálogo em banco: aponte `catalogo.url` para a
   rota da API que lista os itens (o raio X sugere quando encontra uma).
 - Português do Brasil.
+
+Observar e treinar (0.3): [docs/OBSERVAR-E-TREINAR.md](docs/OBSERVAR-E-TREINAR.md).
 
 Próximas melhorias planejadas (raio X do site rodando, entidades, conversa em etapas, ações no
 site, aprendizado com o uso, IA só como plano B): [docs/MELHORIAS.md](docs/MELHORIAS.md).

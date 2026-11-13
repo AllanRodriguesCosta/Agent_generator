@@ -12,11 +12,14 @@ import { scanProject } from "../src/scanner/index.js";
 import { generateKnowledge } from "../src/generator/index.js";
 import { buildPrompt, parseAiAnswer, mergeAi, askGemini } from "../src/generator/ai.js";
 import { install, detectTarget, injectTags, readKnowledge, writeKnowledge, snippetFor, entryPages } from "../src/installer/index.js";
-import { runAssistant } from "../src/cli/assistente.js";
+import { runAssistant, staticRoot, openBrowser } from "../src/cli/assistente.js";
+import { summarize, applyObservation, observationText } from "../src/observe/learn.js";
+import { findUpstream, runSession } from "../src/observe/session.js";
+import { applyCorrection, trainingBase, trainingText } from "../src/train/apply.js";
 import { evaluateKnowledge, evaluationText } from "../src/eval/index.js";
 import { createAgent } from "../src/agent/agent.js";
 
-const ALIASES = { auto: "assistente", wizard: "assistente", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
+const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", auto: "assistente", wizard: "assistente", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
 const WORK = "agente-gerador";
 
 export function parseArgs(argv) {
@@ -26,7 +29,7 @@ export function parseArgs(argv) {
     if (a.startsWith("--")) {
       const [k, v] = a.slice(2).split("=");
       if (v !== undefined) out.flags[k] = v;
-      else if (["destino", "porta", "frases", "modelo", "max-arquivos"].includes(k)) out.flags[k] = argv[++i];
+      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos"].includes(k)) out.flags[k] = argv[++i];
       else out.flags[k] = true;
     } else out._.push(a);
   }
@@ -51,6 +54,12 @@ Comandos:
   aplicar-ia <pasta> <arquivo.json>   Junta a resposta da IA à base (com conferência)
   gemini <pasta>           Igual a prompt-ia + aplicar-ia, usando GEMINI_API_KEY (gratuito)
   servir <pasta>           Abre o site estático com o agente em http://localhost:5173
+  observar [pasta]         Parte 1+: você usa o site por alguns minutos e o agente aprende com isso
+                           (páginas de verdade, formulários, busca, login, catálogo da API e
+                           consultas da conta, como pedidos). Abre o navegador num endereço local.
+  treinar [pasta]          Parte 2: o site abre com o agente em modo treino; você conversa com ele
+                           e marca "Certo" ou "Corrigir" em cada resposta. A correção vai para a
+                           base na hora (com backup), inclusive conversas em etapas.
   ajuda                    Esta mensagem
 
 Opções:
@@ -62,6 +71,9 @@ Opções:
   --porta <n>         Porta do comando servir (padrão 5173)
   --sim               (assistente) Responde o padrão a todas as perguntas, sem abrir navegador
   --sem-pausa         (assistente) Não espera Enter no final
+  --url <endereço>    (observar/treinar) Site já rodando, ex.: http://localhost:3000
+  --minutos <n>       (observar/treinar) Tempo máximo da sessão (padrão 5 e 30)
+  --sem-navegador     (observar/treinar) Não abre o navegador sozinho
 `;
 
 async function readJson(file) {
@@ -224,10 +236,9 @@ async function listenFree(server, port) {
   throw new Error(`Portas ${port} a ${port + 10} ocupadas. Use --porta.`);
 }
 
-async function cmdAssistente(ctx) {
-  const interactive = Boolean(process.stdin.isTTY) && !ctx.flags.sim;
-  const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
-  const io = {
+// Perguntas no terminal: sim/não, texto livre e "espera Enter" (com cancelamento).
+function makeIo(ctx, rl) {
+  return {
     print: (text) => console.log(text),
     async ask(question, fallback, { soInterativo = false } = {}) {
       const hint = fallback ? "[S/n]" : "[s/N]";
@@ -239,11 +250,135 @@ async function cmdAssistente(ctx) {
       const answer = (await rl.question(`${question} ${hint} `)).trim().toLowerCase();
       return answer ? /^(s|sim|y|yes)/.test(answer) : fallback;
     },
+    question: rl ? (q) => rl.question(q) : null,
+    waitEnter: rl ? (signal) => rl.question("", { signal }) : null,
     async pause() {
       if (rl && !ctx.flags["sem-pausa"]) await rl.question("\nPressione Enter para fechar...");
       rl?.close();
     },
   };
+}
+
+async function ensureAgent(ctx) {
+  const report = await loadReport(ctx);
+  const t = await target(ctx, report.projeto.stack);
+  if (!Object.keys(await readKnowledge(t.dir)).length) {
+    await cmdGerar(ctx);
+    await cmdInstalar(ctx, { report });
+  }
+  return currentKnowledge(ctx);
+}
+async function serveStatic(ctx, root) {
+  const server = staticServer(root);
+  const port = await listenFree(server, Number(ctx.flags.porta) || 5173);
+  return { url: `http://localhost:${port}/`, stop: () => server.close() };
+}
+async function upstreamFor(ctx, io) {
+  const root = await staticRoot(ctx.project, await entryPages(ctx.project));
+  const up = await findUpstream({ project: ctx.project, flags: ctx.flags, config: ctx.config, io, staticRoot: root, serveStatic: (r) => serveStatic(ctx, r) });
+  if (!/estático/.test(up.origem)) await saveConfig(ctx, { url: up.url });
+  io.print(`     Site: ${up.url} (${up.origem})`);
+  return up;
+}
+// Junta o que a sessão viu à base (com backup) e salva os relatórios.
+async function learnFrom(ctx, session, minutos) {
+  const obs = summarize(session);
+  const { raw, target: t } = await currentKnowledge(ctx);
+  const antes = evaluateKnowledge(raw).geral;
+  const { knowledge, changes } = applyObservation(raw, obs);
+  const bkp = await backup(ctx, t.dir);
+  await writeKnowledge(t.dir, knowledge, { force: true });
+  const geral = evaluateKnowledge(knowledge).geral;
+  const slim = { ...obs, listas: obs.listas.map(({ itensMapeados, ...l }) => ({ ...l, itensMapeados: itensMapeados.length })) };
+  await writeFile(join(ctx.work, "observacao.json"), `${JSON.stringify({ geradoEm: new Date().toISOString(), motivo: session.motivo, ...slim }, null, 2)}\n`);
+  const text = observationText(obs, changes, { minutos });
+  await writeFile(join(ctx.work, "OBSERVACAO.txt"), text);
+  return { obs, changes, backup: bkp, antes, geral, texto: text };
+}
+
+async function cmdObservar(ctx, io) {
+  await ensureAgent(ctx);
+  io.print("Observação: o Agent Generator fica entre o navegador e o seu site, sem mudar nenhum arquivo do projeto.");
+  const up = await upstreamFor(ctx, io);
+  const minutos = Number(ctx.flags.minutos) || 5;
+  try {
+    const session = await runSession({
+      upstream: up.url,
+      minutos,
+      inject: { body: '<script src="/__agente-gerador/gravador.js"></script>' },
+      io,
+      listenFree,
+      open: ctx.flags["sem-navegador"] ? null : openBrowser,
+      waitEnter: io.waitEnter,
+    });
+    io.print(`     Observação encerrada (${session.motivo}). Aprendendo com ${session.events.length} eventos e ${session.exchanges.length} chamadas...`);
+    return await learnFrom(ctx, session, minutos);
+  } finally {
+    up.stop();
+  }
+}
+
+async function cmdTreinar(ctx, io) {
+  const { target: t } = await ensureAgent(ctx);
+  io.print("Treino: o site abre com o agente em modo treino. Converse com ele como um cliente e, em cada resposta,");
+  io.print('toque em "Certo" ou "Corrigir". Cada correção vai para a base na hora (a anterior fica em agente-gerador/backup).');
+  const up = await upstreamFor(ctx, io);
+  const minutos = Number(ctx.flags.minutos) || 30;
+  const log = [];
+  let backedUp = false;
+  const antes = evaluateKnowledge(await readKnowledge(t.dir)).geral;
+  const routes = {
+    "treino/base": async () => trainingBase(createAgent(await readKnowledge(t.dir)).knowledge),
+    "treino/ok": async (body) => {
+      log.push({ tipo: "ok", pergunta: String(body.pergunta || "").slice(0, 200), intencao: String(body.intencao || "").slice(0, 60), em: new Date().toISOString() });
+      return { ok: true };
+    },
+    "treino/corrigir": async (body) => {
+      const raw = await readKnowledge(t.dir);
+      const { knowledge, mudanca } = applyCorrection(raw, body);
+      const checked = createAgent(knowledge);
+      if (body.tipo === "fluxo" && !checked.knowledge.fluxos.length) throw new Error("A conversa em etapas ficou incompleta.");
+      if (!backedUp) {
+        await backup(ctx, t.dir);
+        backedUp = true;
+      }
+      await writeKnowledge(t.dir, knowledge, { force: true });
+      const geral = evaluateKnowledge(knowledge).geral;
+      log.push({ tipo: "correcao", pergunta: String(body.pergunta).slice(0, 200), correcao: body.tipo, mudanca, em: new Date().toISOString() });
+      io.print(`     Aprendido: ${mudanca}`);
+      return { ok: true, mudanca, geral };
+    },
+  };
+  const pub = t.publicPath || "/agente/";
+  try {
+    const session = await runSession({
+      upstream: up.url,
+      port: 4710,
+      minutos,
+      inject: {
+        head: '<script src="/__agente-gerador/treino.js"></script>',
+        body: `<link rel="stylesheet" href="${pub}widget.css"><script type="module" src="${pub}widget.js"></script><script src="/__agente-gerador/gravador.js"></script>`,
+      },
+      routes,
+      io,
+      listenFree,
+      open: ctx.flags["sem-navegador"] ? null : openBrowser,
+      waitEnter: io.waitEnter,
+    });
+    const learned = await learnFrom(ctx, session, minutos);
+    const text = `${trainingText(log, { antes, depois: learned.geral })}\n${learned.texto}`;
+    await writeFile(join(ctx.work, "TREINO.txt"), text);
+    await writeFile(join(ctx.work, "treino-log.json"), `${JSON.stringify(log, null, 2)}\n`);
+    return { log, antes, depois: learned.geral, observacao: learned.changes, texto: text };
+  } finally {
+    up.stop();
+  }
+}
+
+async function cmdAssistente(ctx) {
+  const interactive = Boolean(process.stdin.isTTY) && !ctx.flags.sim;
+  const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+  const io = makeIo(ctx, rl);
   const steps = {
     analisar: async () => (await cmdAnalisar(ctx)).report,
     target: (report) => target(ctx, report.projeto.stack),
@@ -260,6 +395,7 @@ async function cmdAssistente(ctx) {
     avaliar: () => cmdAvaliar(ctx),
     gemini: () => cmdGemini(ctx),
     conversar: () => cmdConversar(ctx, [], rl),
+    observar: () => cmdObservar(ctx, io),
     async servir(root) {
       const port = await listenFree(staticServer(root), Number(ctx.flags.porta) || 5173);
       return `http://localhost:${port}/`;
@@ -310,12 +446,26 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(HELP);
     return 0;
   }
-  const ctx = await context(command === "assistente" ? _[1] || process.cwd() : _[1], flags);
+  const ctx = await context(["assistente", "observar", "treinar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
   switch (command) {
     case "assistente": {
       const r = await cmdAssistente(ctx);
       if (flags.json) console.log(JSON.stringify(r, null, 2));
       return r.status === "servindo" ? null : 0;
+    }
+    case "observar":
+    case "treinar": {
+      const interactive = Boolean(process.stdin.isTTY) && !flags.sim;
+      const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+      const io = makeIo(ctx, rl);
+      try {
+        const r = command === "observar" ? await cmdObservar(ctx, io) : await cmdTreinar(ctx, io);
+        print(ctx, command === "observar" ? { mudancas: r.changes, acertoAntes: r.antes, acerto: r.geral } : { correcoes: r.log, acertoAntes: r.antes, acerto: r.depois, observacao: r.observacao }, `\n${r.texto}\nAcerto da base: ${command === "observar" ? `${r.antes}% → ${r.geral}%` : `${r.antes}% → ${r.depois}%`}. Relatório em ${WORK}/${command === "observar" ? "OBSERVACAO.txt" : "TREINO.txt"}.`);
+        await io.pause();
+      } finally {
+        rl?.close();
+      }
+      return 0;
     }
     case "analisar": {
       const { report, arquivo } = await cmdAnalisar(ctx);

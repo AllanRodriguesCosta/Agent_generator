@@ -155,7 +155,10 @@ export function generateKnowledge(report) {
     posicao: "direita",
     origem: { gerador: "agent-generator", relatorio: report.geradoEm || "", stack: report.projeto?.stack || [] },
   };
-  const { knowledge, problems } = checkKnowledge({ agente, intencoes, faq, paginas, catalogo });
+  // Consultas: o login vem do raio X; buscas e dados da conta são confirmados pela observação
+  // (comando observar), que vê as chamadas reais do site.
+  const consultas = { login: loginPage, buscas: [], dados: [] };
+  const { knowledge, problems } = checkKnowledge({ agente, intencoes, faq, paginas, catalogo, fluxos: [], consultas });
   knowledge.agente.origem = agente.origem;
   const notes = [...(report.avisos || []), ...problems];
   if (!contactPage && !contactParts.length) notes.push("Sem contato encontrado: edite intencoes.json > contato > respostas.");

@@ -4,10 +4,12 @@
 //   faq.json        [{ id, pergunta, resposta, termos, link }]
 //   paginas.json    [{ id, titulo, href, descricao, termos }]
 //   catalogo.json   { rotulo, itens: [{ id, nome, categoria, preco, descricao, link, imagem, tags }] }
+//   fluxos.json     [{ id, gatilhos: [...], pergunta, opcoes: [{ rotulo, resposta, acoes, proximo }] }]
+//   consultas.json  { login, buscas: [{ id, rotulo, modelo, exemplos }], dados: [{ id, rotulo, url, exemplos, campos, pagina }] }
 // A conferência corta o que for grande demais e devolve a lista de problemas encontrados.
 
-export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo"];
-export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000 };
+export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
+export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000, fluxos: 60, opcoes: 8, consultas: 12 };
 
 const str = (v, max = LIMITS.curto) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -161,7 +163,64 @@ export function checkKnowledge(input = {}) {
     itens: linkModelo.includes("{id}") ? itens.map((p) => (p.link ? p : { ...p, link: linkModelo.replace("{id}", encodeURIComponent(p.id)) })) : itens,
   };
 
-  if (!Object.keys(intencoes).length && !faq.length && !paginas.length && !itens.length && !url)
+  // Conversa em etapas: o agente pergunta antes de responder ("Entrega ou retirada?").
+  const flowIds = new Set();
+  const fluxos = list(input.fluxos)
+    .slice(0, LIMITS.fluxos)
+    .map((f, i) => {
+      let id = slug(f?.id || f?.pergunta) || `fluxo-${i + 1}`;
+      for (let n = 2; flowIds.has(id); n++) id = `${slug(f?.id || f?.pergunta) || `fluxo-${i + 1}`}-${n}`;
+      flowIds.add(id);
+      return {
+        id,
+        gatilhos: [...new Set(list(f?.gatilhos).map((g) => str(g, 200)).filter(Boolean))].slice(0, LIMITS.exemplos),
+        pergunta: str(f?.pergunta, 400),
+        opcoes: list(f?.opcoes)
+          .slice(0, LIMITS.opcoes)
+          .map((o) => ({ rotulo: str(o?.rotulo, 60), resposta: str(o?.resposta, LIMITS.texto), acoes: actions(o?.acoes, problems, `fluxos.${id}`), proximo: slug(o?.proximo) }))
+          .filter((o) => o.rotulo && (o.resposta || o.proximo)),
+      };
+    })
+    .filter((f) => {
+      const ok = f.gatilhos.length >= 2 && f.pergunta && f.opcoes.length >= 2;
+      if (!ok) problems.push(`fluxos.${f.id}: precisa de 2 gatilhos, uma pergunta e 2 opções; ignorado.`);
+      return ok;
+    });
+  for (const f of fluxos) for (const o of f.opcoes) if (o.proximo && !flowIds.has(o.proximo)) o.proximo = "";
+
+  // Consultas ao vivo: buscas do site (link pronto com o termo) e dados da conta (pedidos,
+  // agendamentos...) lidos pelo widget na API do próprio site, com a sessão de quem está logado.
+  const rawQ = input.consultas && typeof input.consultas === "object" && !Array.isArray(input.consultas) ? input.consultas : {};
+  const sameSite = (v) => {
+    const link = safeLink(v);
+    return link && !/^https?:/i.test(link) ? link : "";
+  };
+  const buscas = list(rawQ.buscas)
+    .slice(0, LIMITS.consultas)
+    .map((b, i) => ({ id: slug(b?.id || b?.rotulo) || `busca-${i + 1}`, rotulo: str(b?.rotulo, 60) || "site", modelo: sameSite(b?.modelo), exemplos: list(b?.exemplos).map((e) => str(e, 200)).filter(Boolean).slice(0, LIMITS.exemplos) }))
+    .filter((b) => {
+      const ok = b.modelo.includes("{termo}");
+      if (!ok) problems.push(`consultas.buscas.${b.id}: modelo precisa de {termo} e ser do próprio site; ignorada.`);
+      return ok;
+    });
+  const dados = list(rawQ.dados)
+    .slice(0, LIMITS.consultas)
+    .map((d, i) => ({
+      id: slug(d?.id || d?.rotulo).replace(/-/g, "_") || `dados_${i + 1}`,
+      rotulo: str(d?.rotulo, 60) || "registros",
+      url: sameSite(d?.url),
+      exemplos: [...new Set(list(d?.exemplos).map((e) => str(e, 200)).filter(Boolean))].slice(0, LIMITS.exemplos),
+      campos: Object.fromEntries(Object.entries(d?.campos && typeof d.campos === "object" ? d.campos : {}).filter(([k, v]) => /^[a-z]{2,12}$/.test(k) && typeof v === "string" && /^[\w.-]{1,40}$/.test(v))),
+      pagina: safeLink(d?.pagina),
+    }))
+    .filter((d) => {
+      const ok = d.url && d.exemplos.length >= 2;
+      if (!ok) problems.push(`consultas.dados.${d.id}: precisa de url do próprio site e 2 exemplos; ignorada.`);
+      return ok;
+    });
+  const consultas = { login: safeLink(rawQ.login), buscas, dados };
+
+  if (!Object.keys(intencoes).length && !faq.length && !paginas.length && !itens.length && !url && !fluxos.length)
     problems.push("Base vazia: o agente só vai cumprimentar e pedir outra pergunta.");
-  return { knowledge: { agente, intencoes, faq, paginas, catalogo }, problems };
+  return { knowledge: { agente, intencoes, faq, paginas, catalogo, fluxos, consultas }, problems };
 }

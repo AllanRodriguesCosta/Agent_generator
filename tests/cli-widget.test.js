@@ -37,7 +37,7 @@ test("CLI criar: raio X, base, instalação, avaliação e saída JSON para IAs"
   assert.match(JSON.parse(ai.stdout).backup, /agente-gerador[\\/]backup[\\/]conhecimento-/);
 
   const again = cli("gerar", site, "--json");
-  assert.equal(JSON.parse(again.stdout).mantidos.length, 5, "gerar de novo não apaga a base editada");
+  assert.equal(JSON.parse(again.stdout).mantidos.length, 7, "gerar de novo não apaga a base editada");
 });
 
 test("CLI: ajuda, comando desconhecido e pasta inexistente", () => {
