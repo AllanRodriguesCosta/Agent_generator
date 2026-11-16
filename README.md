@@ -136,7 +136,9 @@ Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`
 Observar e treinar (0.3): [docs/OBSERVAR-E-TREINAR.md](docs/OBSERVAR-E-TREINAR.md).
 
 Próximas melhorias planejadas (raio X do site rodando, entidades, conversa em etapas, ações no
-site, aprendizado com o uso, IA só como plano B): [docs/MELHORIAS.md](docs/MELHORIAS.md).
+site, aprendizado com o uso, IA só como plano B): [docs/MELHORIAS.md](docs/MELHORIAS.md). A visão
+de produto — chatbot local, fácil de configurar e IA limitada por capacidades aprovadas — está em
+[docs/ROADMAP-PRODUTO.md](docs/ROADMAP-PRODUTO.md).
 
 ## Desenvolvimento
 

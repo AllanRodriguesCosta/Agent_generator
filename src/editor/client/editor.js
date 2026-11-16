@@ -133,6 +133,28 @@
         });
       },
     },
+    acoes: {
+      nome: "Capacidades aprovadas",
+      render: function (p) {
+        base.acoes = base.acoes || { versao: 1, padrao: "negar", acoes: [] };
+        base.acoes.acoes = base.acoes.acoes || [];
+        p.append(el("p", { class: "vazio" }, "Estas são as únicas capacidades que uma futura integração de IA poderá pedir. Nesta versão, o agente só aceita navegação interna; ele não envia formulários, altera conteúdo ou faz pagamentos."));
+        var add = el("button", { type: "button" }, "+ Aprovar navegação");
+        add.addEventListener("click", function () {
+          base.acoes.acoes.unshift({ id: "acao-" + Date.now(), tipo: "navegar", rotulo: "", href: "/", permissao: "publico", confirmacao: false });
+          changed();
+          render();
+        });
+        p.append(add);
+        if (!base.acoes.acoes.length) p.append(el("p", { class: "vazio" }, "Nenhuma navegação aprovada."));
+        base.acoes.acoes.forEach(function (action, i) {
+          var c = card(action.rotulo, function () { base.acoes.acoes.splice(i, 1); });
+          c.append(field(action, "rotulo", "Nome para mostrar"), field(action, "href", "Endereço interno (ex.: /contato)"));
+          c.append(el("small", { class: "vazio" }, "Tipo: navegar · Permissão: público · Política global: negar por padrão."));
+          p.append(c);
+        });
+      },
+    },
     fluxos: {
       nome: "Conversas em etapas",
       render: function (p) {

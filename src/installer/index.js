@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 export const CORE_FILES = ["text.js", "classifier.js", "search.js", "knowledge.js", "agent.js", "catalog-map.js", "lookup.js", "entities.js", "privacy.js", "ia.js"];
-export const KNOWLEDGE_FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
+export const KNOWLEDGE_FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes"];
 export const MARKER = "<!-- agente: agent-generator -->";
 
 const exists = async (p) => access(p).then(() => true, () => false);
@@ -76,6 +76,8 @@ ${snippet}
 - conhecimento/intencoes.json: frases de exemplo e respostas (saudação, contato, ajuda...).
 - conhecimento/paginas.json: páginas do site e os termos que levam a cada uma.
 - conhecimento/catalogo.json: itens (ou "url" da API do site que lista os itens).
+- conhecimento/acoes.json: capacidades permitidas para futuras integrações com IA; nesta versão,
+  só navegação interna é aceita e a política padrão é negar qualquer outra ação.
 
 Depois de editar, confira com: npx agent-generator avaliar <pasta-do-projeto>
 

@@ -1,5 +1,9 @@
 # Próximas melhorias (roadmap)
 
+> A priorização de produto, princípios de privacidade e o caminho para IA limitada por capacidades
+> aprovadas estão em [ROADMAP-PRODUTO.md](ROADMAP-PRODUTO.md). Esta página preserva o backlog
+> técnico detalhado.
+
 O que falta para o agente gerado deixar de parecer "um chatbot que responde 5 frases" e para o
 raio X entender melhor cada projeto. Tudo continua **sem custo**. A IA, quando aparece, é opcional
 e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.

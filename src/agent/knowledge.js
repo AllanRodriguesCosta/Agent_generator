@@ -6,10 +6,11 @@
 //   catalogo.json   { rotulo, itens: [{ id, nome, categoria, preco, descricao, link, imagem, tags }] }
 //   fluxos.json     [{ id, gatilhos: [...], pergunta, opcoes: [{ rotulo, resposta, acoes, proximo }] }]
 //   consultas.json  { login, buscas: [{ id, rotulo, modelo, exemplos }], dados: [{ id, rotulo, url, exemplos, campos, pagina }] }
+//   acoes.json      { versao, padrao: "negar", acoes: [{ id, tipo: "navegar", href, rotulo, permissao, confirmacao }] }
 // A conferência corta o que for grande demais e devolve a lista de problemas encontrados.
 
-export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas"];
-export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000, fluxos: 60, opcoes: 8, consultas: 12 };
+export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes"];
+export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000, fluxos: 60, opcoes: 8, consultas: 12, capacidades: 300 };
 
 const str = (v, max = LIMITS.curto) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -237,7 +238,33 @@ export function checkKnowledge(input = {}) {
   }
   const consultas = { login: safeLink(rawQ.login), buscas, dados, ...(auth ? { auth } : {}) };
 
+  // Catálogo de capacidades: é o contrato para futuras integrações com IA. Nesta versão,
+  // apenas navegação interna é aceita; não há chamadas HTTP, escrita ou efeito colateral.
+  const rawCapabilities = input.acoes && typeof input.acoes === "object" && !Array.isArray(input.acoes) ? input.acoes : {};
+  const capabilityIds = new Set();
+  const acoes = list(rawCapabilities.acoes)
+    .slice(0, LIMITS.capacidades)
+    .map((action, i) => {
+      let id = slug(action?.id || action?.rotulo) || `acao-${i + 1}`;
+      for (let n = 2; capabilityIds.has(id); n++) id = `${slug(action?.id || action?.rotulo) || `acao-${i + 1}`}-${n}`;
+      capabilityIds.add(id);
+      return {
+        id,
+        tipo: action?.tipo === "navegar" ? "navegar" : "",
+        rotulo: str(action?.rotulo, 60),
+        href: sameSite(action?.href),
+        permissao: action?.permissao === "logado" ? "logado" : "publico",
+        confirmacao: action?.confirmacao === true,
+      };
+    })
+    .filter((action) => {
+      const ok = action.tipo === "navegar" && action.rotulo && action.href;
+      if (!ok) problems.push(`acoes.${action.id}: só navegação interna com rótulo e link é permitida; ignorada.`);
+      return ok;
+    });
+  const politicaAcoes = rawCapabilities.padrao === "negar" ? "negar" : "negar";
+
   if (!Object.keys(intencoes).length && !faq.length && !paginas.length && !itens.length && !url && !fluxos.length)
     problems.push("Base vazia: o agente só vai cumprimentar e pedir outra pergunta.");
-  return { knowledge: { agente, intencoes, faq, paginas, catalogo, fluxos, consultas }, problems };
+  return { knowledge: { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, acoes: { versao: 1, padrao: politicaAcoes, acoes } }, problems };
 }

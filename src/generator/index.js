@@ -138,6 +138,15 @@ export function generateKnowledge(report) {
   const faqChips = faq.slice(0, 3).map((f) => f.pergunta.slice(0, 60));
   const intencoes = baseIntents({ site, contactText, contactPage, whatsapp: c.whatsapp?.[0] || "", helpPage, loginPage, catalogLabel: label, faqChips });
   const sugestoes = uniq([...faqChips.slice(0, 2), label && `Ver ${label}`, (contactPage || contactParts.length) && "Falar com o atendimento"]).slice(0, 4);
+  // Contrato inicial de capacidades: só páginas públicas que o raio X encontrou. Nenhuma IA
+  // recebe permissão implícita para enviar dados, alterar conteúdo ou chamar APIs.
+  const acoes = {
+    versao: 1,
+    padrao: "negar",
+    acoes: paginas
+      .filter((p) => /^\/(?!\/)/.test(p.href))
+      .map((p) => ({ id: `abrir-${p.titulo}`, tipo: "navegar", rotulo: `Abrir ${p.titulo}`.slice(0, 60), href: p.href, permissao: "publico", confirmacao: false })),
+  };
 
   const agente = {
     versao: 1,
@@ -158,7 +167,7 @@ export function generateKnowledge(report) {
   // Consultas: o login vem do raio X; buscas e dados da conta são confirmados pela observação
   // (comando observar), que vê as chamadas reais do site.
   const consultas = { login: loginPage, buscas: [], dados: [] };
-  const { knowledge, problems } = checkKnowledge({ agente, intencoes, faq, paginas, catalogo, fluxos: [], consultas });
+  const { knowledge, problems } = checkKnowledge({ agente, intencoes, faq, paginas, catalogo, fluxos: [], consultas, acoes });
   knowledge.agente.origem = agente.origem;
   const notes = [...(report.avisos || []), ...problems];
   if (!contactPage && !contactParts.length) notes.push("Sem contato encontrado: edite intencoes.json > contato > respostas.");

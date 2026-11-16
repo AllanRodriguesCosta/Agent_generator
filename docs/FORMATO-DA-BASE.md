@@ -1,6 +1,6 @@
 # Formato da base de conhecimento (versão 1)
 
-Sete arquivos JSON (os dois últimos, `fluxos.json` e `consultas.json`, desde a 0.3) em `agente/conhecimento/`. Todos são opcionais; o que faltar vira padrão. Ao
+Oito arquivos JSON (o último, `acoes.json`, desde a 0.7) em `agente/conhecimento/`. Todos são opcionais; o que faltar vira padrão. Ao
 carregar, o agente confere tudo: corta textos longos, descarta links perigosos (`javascript:`,
 `data:`) e ignora entradas incompletas (o comando `avaliar` lista o que foi ignorado).
 
@@ -148,6 +148,31 @@ começos de palavra ("pag" → "pagamento") são aceitos.
   para a rota do próprio site. Sem `auth`, vale o cookie da sessão.
 - A observação (`agent-generator observar`) preenche este arquivo sozinha, inclusive o `auth`
   (ela anota só o **nome** da chave que guarda o token, nunca o valor).
+
+## acoes.json (0.7): catálogo de capacidades
+
+```json
+{
+  "versao": 1,
+  "padrao": "negar",
+  "acoes": [
+    {
+      "id": "abrir-contato",
+      "tipo": "navegar",
+      "rotulo": "Abrir Contato",
+      "href": "/contato",
+      "permissao": "publico",
+      "confirmacao": false
+    }
+  ]
+}
+```
+
+O gerador cria esse arquivo a partir das páginas públicas encontradas. Ele é o contrato de escopo
+para integrações futuras com IA: o padrão é sempre `"negar"`. Na versão atual, a única capacidade
+aceita é `"navegar"` para caminho interno do próprio site; links externos, chamadas de API,
+pagamentos, mudanças de dados e comandos são descartados. O widget ainda usa seus botões normais:
+este arquivo não concede a uma IA poder extra.
 
 ## Catálogo: entidades e memória (0.4)
 

@@ -21,6 +21,9 @@ test("gerador: nome do site, títulos limpos, intenções básicas e nada invent
   // Só fatos do projeto: a FAQ gerada é a do README + o horário encontrado.
   assert.equal(knowledge.faq.length, 6);
   assert.equal(knowledge.catalogo.itens.length, 7);
+  assert.equal(knowledge.acoes.padrao, "negar");
+  assert.ok(knowledge.acoes.acoes.some((a) => a.tipo === "navegar" && a.href === "/contato.html"));
+  assert.ok(knowledge.acoes.acoes.every((a) => a.tipo === "navegar" && a.href.startsWith("/") && !a.href.startsWith("//")));
 });
 
 test("conversa: cumprimento, FAQ com outras palavras, página, contato, catálogo e não entendi", () => {
@@ -83,6 +86,25 @@ test("base: links perigosos e entradas incompletas são descartados, com aviso",
   assert.equal(k.faq.length, 0);
   assert.equal(k.catalogo.itens[0].link, "/p?id=a%20b");
   assert.equal(problems.length, 3);
+});
+
+test("capacidades: só navegação interna, declarada e sem efeito colateral", () => {
+  const { knowledge: k, problems } = checkKnowledge({
+    acoes: {
+      padrao: "permitir",
+      acoes: [
+        { id: "abrir ajuda", tipo: "navegar", rotulo: "Abrir ajuda", href: "/ajuda" },
+        { id: "externa", tipo: "navegar", rotulo: "Abrir fora", href: "https://exemplo.com" },
+        { id: "pagamento", tipo: "pagar", rotulo: "Cobrar", href: "/checkout" },
+        { id: "script", tipo: "navegar", rotulo: "Executar", href: "javascript:alert(1)" },
+      ],
+    },
+  });
+  assert.equal(k.acoes.padrao, "negar");
+  assert.deepEqual(k.acoes.acoes, [{ id: "abrir-ajuda", tipo: "navegar", rotulo: "Abrir ajuda", href: "/ajuda", permissao: "publico", confirmacao: false }]);
+  assert.match(problems.join(" "), /acoes\.externa/);
+  assert.match(problems.join(" "), /acoes\.pagamento/);
+  assert.match(problems.join(" "), /acoes\.script/);
 });
 
 test("avaliação do exemplo: base coerente e perguntas e páginas encontradas", () => {
