@@ -174,6 +174,11 @@ aceita é `"navegar"` para caminho interno do próprio site; links externos, cha
 pagamentos, mudanças de dados e comandos são descartados. O widget ainda usa seus botões normais:
 este arquivo não concede a uma IA poder extra.
 
+O campo `candidatas` é informativo e sempre começa bloqueado. O raio X pode listar rotas e
+formulários classificados pelo glossário como `consulta`, `dados_da_conta`, `dados_pessoais`,
+`autenticacao`, `escrita`, `alteracao` ou `pagamento`, com risco médio, alto ou crítico. A presença
+de uma candidata não autoriza o chatbot, uma IA ou o servidor a chamá-la.
+
 ## Catálogo: entidades e memória (0.4)
 
 Nada novo para escrever: o agente tira do próprio `catalogo.json`

@@ -138,6 +138,7 @@
       render: function (p) {
         base.acoes = base.acoes || { versao: 1, padrao: "negar", acoes: [] };
         base.acoes.acoes = base.acoes.acoes || [];
+        base.acoes.candidatas = base.acoes.candidatas || [];
         p.append(el("p", { class: "vazio" }, "Estas são as únicas capacidades que uma futura integração de IA poderá pedir. Nesta versão, o agente só aceita navegação interna; ele não envia formulários, altera conteúdo ou faz pagamentos."));
         var add = el("button", { type: "button" }, "+ Aprovar navegação");
         add.addEventListener("click", function () {
@@ -153,6 +154,17 @@
           c.append(el("small", { class: "vazio" }, "Tipo: navegar · Permissão: público · Política global: negar por padrão."));
           p.append(c);
         });
+        if (base.acoes.candidatas.length) {
+          p.append(el("h3", {}, "Interações detectadas e bloqueadas"));
+          p.append(el("p", { class: "vazio" }, "O raio X encontrou estas interações. Elas são apenas informativas: não foram aprovadas nem podem ser executadas pelo chatbot."));
+          base.acoes.candidatas.forEach(function (candidate) {
+            var summary = candidate.metodo + " " + candidate.caminho + " · " + candidate.categoria + " · risco " + candidate.risco;
+            var c = card(summary);
+            c.append(el("p", {}, candidate.motivo));
+            if ((candidate.campos || []).length) c.append(el("small", { class: "vazio" }, "Campos detectados: " + candidate.campos.join(", ")));
+            p.append(c);
+          });
+        }
       },
     },
     fluxos: {

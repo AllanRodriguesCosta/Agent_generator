@@ -24,6 +24,7 @@ para executar ações que a base gerada não aprovou.
 | Widget, editor, avaliação e treino | Feito | Instala, corrige e mede a base sem editar código. |
 | IA opcional como intérprete | Feito | A IA reescreve pergunta desconhecida; a resposta continua vindo da base. |
 | `acoes.json`: catálogo de capacidades | Iniciado nesta versão | O agente recebe uma lista audível de navegações permitidas; a política é `negar` por padrão. |
+| Glossário de interações sensíveis | Iniciado nesta versão | Rotas e formulários viram candidatos bloqueados, classificados como consulta, conta, dados pessoais, autenticação, escrita, alteração ou pagamento. |
 | Avaliação de sinônimos e lacunas | Próximo | O relatório indicará perguntas críticas, variações não cobertas e conflitos de intenção. |
 
 **Critério de saída:** todo agente publicado deve ter uma avaliação, uma lista de lacunas e um
@@ -78,7 +79,8 @@ API administrativa do site.
 ## Ordem imediata de execução
 
 1. **Fase 1: catálogo de capacidades seguro** — iniciada agora.
-2. Melhorar a avaliação com conjuntos de sinônimos e falsos entendimentos.
-3. Implementar mesclagem incremental da base.
-4. Criar o assistente gráfico e, em seguida, o plugin WordPress.
-5. Adicionar ações estruturadas apenas depois de haver validação e aprovações no servidor.
+2. Completar o glossário por observação: classificar chamadas vistas no navegador sem registrar valores, cookies, tokens ou dados pessoais.
+3. Melhorar a avaliação com conjuntos de sinônimos e falsos entendimentos.
+4. Implementar mesclagem incremental da base.
+5. Criar o assistente gráfico e, em seguida, o plugin WordPress.
+6. Adicionar ações estruturadas apenas depois de haver validação e aprovações no servidor.

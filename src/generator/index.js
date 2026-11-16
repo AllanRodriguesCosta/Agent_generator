@@ -3,6 +3,7 @@
 // cumprimentar ou pedir ajuda) vêm prontos e citam o nome do site.
 import { checkKnowledge } from "../agent/knowledge.js";
 import { normalize } from "../agent/text.js";
+import { candidatesFromReport } from "../capabilities/glossary.js";
 
 const uniq = (a) => [...new Set(a.filter(Boolean))];
 const has = (re, ...values) => values.some((v) => re.test(normalize(v)));
@@ -146,6 +147,7 @@ export function generateKnowledge(report) {
     acoes: paginas
       .filter((p) => /^\/(?!\/)/.test(p.href))
       .map((p) => ({ id: `abrir-${p.titulo}`, tipo: "navegar", rotulo: `Abrir ${p.titulo}`.slice(0, 60), href: p.href, permissao: "publico", confirmacao: false })),
+    candidatas: candidatesFromReport(report),
   };
 
   const agente = {

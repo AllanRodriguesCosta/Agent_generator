@@ -4,6 +4,7 @@ import { scanProject } from "../src/scanner/index.js";
 import { generateKnowledge, cleanTitle } from "../src/generator/index.js";
 import { createAgent, extractPrice, money } from "../src/agent/agent.js";
 import { checkKnowledge, safeLink } from "../src/agent/knowledge.js";
+import { candidatesFromReport, classifyInteraction } from "../src/capabilities/glossary.js";
 import { evaluateKnowledge } from "../src/eval/index.js";
 import { EXAMPLE } from "./helpers.js";
 
@@ -24,6 +25,7 @@ test("gerador: nome do site, títulos limpos, intenções básicas e nada invent
   assert.equal(knowledge.acoes.padrao, "negar");
   assert.ok(knowledge.acoes.acoes.some((a) => a.tipo === "navegar" && a.href === "/contato.html"));
   assert.ok(knowledge.acoes.acoes.every((a) => a.tipo === "navegar" && a.href.startsWith("/") && !a.href.startsWith("//")));
+  assert.ok(knowledge.acoes.candidatas.some((a) => a.caminho === "/api/pedidos" && a.categoria === "dados_da_conta" && a.estado === "bloqueada"));
 });
 
 test("conversa: cumprimento, FAQ com outras palavras, página, contato, catálogo e não entendi", () => {
@@ -105,6 +107,17 @@ test("capacidades: só navegação interna, declarada e sem efeito colateral", (
   assert.match(problems.join(" "), /acoes\.externa/);
   assert.match(problems.join(" "), /acoes\.pagamento/);
   assert.match(problems.join(" "), /acoes\.script/);
+});
+
+test("glossário: classifica interações sensíveis sem habilitá-las", () => {
+  assert.deepEqual(classifyInteraction({ metodo: "POST", caminho: "/api/checkout" }), { categoria: "pagamento", risco: "critico", motivo: "Pode envolver cobrança, preço, checkout ou meio de pagamento." });
+  assert.equal(classifyInteraction({ metodo: "GET", caminho: "/api/orders" }).categoria, "dados_da_conta");
+  const candidates = candidatesFromReport({
+    rotas: [{ metodo: "POST", caminho: "/api/contato" }],
+    formularios: [{ method: "post", action: "/api/contato", campos: ["E-mail", "Mensagem"] }],
+  });
+  assert.equal(candidates.length, 1);
+  assert.deepEqual([candidates[0].categoria, candidates[0].risco, candidates[0].estado], ["dados_pessoais", "alto", "bloqueada"]);
 });
 
 test("avaliação do exemplo: base coerente e perguntas e páginas encontradas", () => {

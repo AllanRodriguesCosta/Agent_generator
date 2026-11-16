@@ -8,6 +8,7 @@
 import { mapItems } from "../agent/catalog-map.js";
 import { lookupFields, listOf } from "../agent/lookup.js";
 import { normalize } from "../agent/text.js";
+import { candidateInteraction } from "../capabilities/glossary.js";
 
 const SEARCH_KEYS = ["q", "busca", "search", "s", "termo", "query", "pesquisa", "keyword", "k"];
 const LOGIN = /(login|entrar|signin|sign-in|acesso|acessar|auth)/i;
@@ -146,9 +147,25 @@ export function applyObservation(base, obs) {
   k.paginas ||= [];
   k.faq ||= [];
   k.fluxos ||= [];
+  k.acoes ||= { versao: 1, padrao: "negar", acoes: [], candidatas: [] };
+  k.acoes.candidatas ||= [];
   k.consultas = { login: "", buscas: [], dados: [], ...(k.consultas || {}) };
   k.catalogo ||= { rotulo: "itens", itens: [] };
-  const changes = { paginas: [], faq: [], buscas: [], dados: [], login: "", catalogo: "", linkModelo: "" };
+  const changes = { paginas: [], faq: [], buscas: [], dados: [], login: "", catalogo: "", linkModelo: "", candidatas: [] };
+
+  // Chamadas observadas nunca viram ação executável. Elas apenas entram no catálogo de revisão,
+  // sem valores de campos, cookies ou tokens (o gravador já higieniza esses dados na origem).
+  const candidateKeys = new Set(k.acoes.candidatas.map((c) => `${c.metodo} ${c.caminho}`));
+  const registerCandidate = (input) => {
+    const candidate = candidateInteraction({ ...input, origem: "observacao" });
+    const key = candidate && `${candidate.metodo} ${candidate.caminho}`;
+    if (!candidate || candidateKeys.has(key)) return;
+    candidateKeys.add(key);
+    k.acoes.candidatas.push(candidate);
+    changes.candidatas.push(`${candidate.metodo} ${candidate.caminho} (${candidate.categoria}, ${candidate.risco})`);
+  };
+  for (const action of obs.acoes || []) registerCandidate({ id: `observado-${action.metodo}-${action.caminho}`, metodo: action.metodo, caminho: action.caminho, campos: action.campos || [] });
+  for (const list of (obs.listas || []).filter((item) => item.comSessao)) registerCandidate({ id: `observado-GET-${list.original}`, metodo: "GET", caminho: list.original, campos: Object.keys(list.campos || {}) });
 
   const known = new Set(k.paginas.map((p) => p.href));
   for (const p of obs.paginas) {
@@ -235,6 +252,7 @@ export function observationText(obs, changes, { minutos } = {}) {
     ...(changes.login ? [`- Página de login: ${changes.login}`] : []),
     ...(changes.auth ? [`- Consultas com login por token: ${changes.auth}`] : []),
     ...changes.dados.map((d) => `- Consulta da conta: ${d}`),
+    ...changes.candidatas.map((c) => `- Interação detectada e bloqueada: ${c}`),
     ...(changes.catalogo ? [`- Catálogo lido da API: ${changes.catalogo}${changes.linkModelo ? ` (link de cada item: ${changes.linkModelo})` : ""}`] : []),
     ...(Object.values(changes).every((v) => !v || (Array.isArray(v) && !v.length)) ? ["- Nada novo desta vez (a base já cobria o que foi visto)."] : []),
     "",

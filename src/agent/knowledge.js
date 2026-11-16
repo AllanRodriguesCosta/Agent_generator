@@ -6,7 +6,7 @@
 //   catalogo.json   { rotulo, itens: [{ id, nome, categoria, preco, descricao, link, imagem, tags }] }
 //   fluxos.json     [{ id, gatilhos: [...], pergunta, opcoes: [{ rotulo, resposta, acoes, proximo }] }]
 //   consultas.json  { login, buscas: [{ id, rotulo, modelo, exemplos }], dados: [{ id, rotulo, url, exemplos, campos, pagina }] }
-//   acoes.json      { versao, padrao: "negar", acoes: [{ id, tipo: "navegar", href, rotulo, permissao, confirmacao }] }
+//   acoes.json      { versao, padrao: "negar", acoes: [{ id, tipo: "navegar", href, rotulo, permissao, confirmacao }], candidatas: [...] }
 // A conferência corta o que for grande demais e devolve a lista de problemas encontrados.
 
 export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes"];
@@ -263,8 +263,35 @@ export function checkKnowledge(input = {}) {
       return ok;
     });
   const politicaAcoes = rawCapabilities.padrao === "negar" ? "negar" : "negar";
+  const candidateIds = new Set();
+  const candidatas = list(rawCapabilities.candidatas)
+    .slice(0, LIMITS.capacidades)
+    .map((candidate, i) => {
+      let id = slug(candidate?.id || `${candidate?.metodo}-${candidate?.caminho}`) || `candidata-${i + 1}`;
+      for (let n = 2; candidateIds.has(id); n++) id = `${slug(candidate?.id || `${candidate?.metodo}-${candidate?.caminho}`) || `candidata-${i + 1}`}-${n}`;
+      candidateIds.add(id);
+      const metodo = ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(String(candidate?.metodo || "").toUpperCase()) ? String(candidate.metodo).toUpperCase() : "";
+      const categoria = ["consulta", "escrita", "dados_da_conta", "dados_pessoais", "autenticacao", "pagamento", "alteracao"].includes(candidate?.categoria) ? candidate.categoria : "consulta";
+      const risco = ["medio", "alto", "critico"].includes(candidate?.risco) ? candidate.risco : "alto";
+      return {
+        id,
+        origem: candidate?.origem === "observacao" ? "observacao" : "raio_x",
+        metodo,
+        caminho: sameSite(candidate?.caminho),
+        campos: [...new Set(list(candidate?.campos).map((field) => str(field, 60)).filter(Boolean))].slice(0, 20),
+        categoria,
+        risco,
+        motivo: str(candidate?.motivo, 240),
+        estado: "bloqueada",
+      };
+    })
+    .filter((candidate) => {
+      const ok = candidate.metodo && candidate.caminho && candidate.motivo;
+      if (!ok) problems.push(`acoes.candidatas.${candidate.id}: método, caminho ou justificativa inválidos; ignorada.`);
+      return ok;
+    });
 
   if (!Object.keys(intencoes).length && !faq.length && !paginas.length && !itens.length && !url && !fluxos.length)
     problems.push("Base vazia: o agente só vai cumprimentar e pedir outra pergunta.");
-  return { knowledge: { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, acoes: { versao: 1, padrao: politicaAcoes, acoes } }, problems };
+  return { knowledge: { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, acoes: { versao: 1, padrao: politicaAcoes, acoes, candidatas } }, problems };
 }

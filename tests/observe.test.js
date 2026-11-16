@@ -116,6 +116,8 @@ test("aprendizado: páginas, formulário vira pergunta, busca, login, consulta d
   assert.equal(knowledge.consultas.dados[0].url, "/api/orders");
   assert.equal(knowledge.catalogo.url, "/api/products");
   assert.equal(knowledge.catalogo.linkModelo, "/produto?id={id}", "link de cada item descoberto pela visita");
+  assert.ok(knowledge.acoes.candidatas.some((a) => a.metodo === "GET" && a.caminho === "/api/orders" && a.categoria === "dados_da_conta" && a.estado === "bloqueada"));
+  assert.ok(knowledge.acoes.candidatas.some((a) => a.metodo === "POST" && a.caminho === "/api/cart" && a.estado === "bloqueada"));
   assert.equal(formFaq({ botao: "OK", titulo: "Newsletter", campos: [{ rotulo: "E-mail", tipo: "email" }], pagina: "/" }, "Início").pergunta, "Como faço para preencher “Newsletter”?");
 });
 
