@@ -123,6 +123,8 @@ export async function scanProject(root, { maxFiles } = {}) {
             arquivo: rel,
             // Versão 0.7: seções com texto (resumos), tipos/ações schema.org e botões.
             blocos: page.blocks,
+            // Versão 0.8: fotos de conteúdo (galerias por etapa/categoria).
+            imagens: page.images,
             schema: page.schemaTypes,
             acoesSchema: page.potentialActions,
             botoes: page.buttons,

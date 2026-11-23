@@ -1,5 +1,7 @@
 # Roadmap do Agent Generator (a partir da 0.7)
 
+> Atualizado em 23/11/2026 com a 0.8 (contexto do usuário, fotos no chat e conversa natural).
+
 Objetivo: chegar perto do limite do que um agente **local, gratuito e sem IA obrigatória**
 consegue fazer, e deixar a IA opcional só para o que realmente precisa dela. A pesquisa que
 justifica cada item está em [PESQUISA-AGENTES.md](PESQUISA-AGENTES.md). O histórico anterior
@@ -22,37 +24,52 @@ Legenda: ✅ feito · 🔜 próxima versão · ⏳ depois
 Arquivos novos na base: `setor.json`, `conteudos.json`, `interacoes.json`
 ([DOMINIO-CONTEUDO-INTERACOES.md](DOMINIO-CONTEUDO-INTERACOES.md)).
 
-## 0.8 — Conversa mais natural 🔜
+## 0.8 — Contexto, mídia e conversa natural ✅ (23/11/2026)
+
+Base: [PESQUISA-MERCADO.md](PESQUISA-MERCADO.md) (Tidio Lyro, Intercom Fin, Zendesk, Chatbase,
+Crisp, Botpress, Voiceflow, Hyperleap). Uso: [CONTEXTO-E-MIDIA.md](CONTEXTO-E-MIDIA.md).
+
+| # | Item | Situação |
+| --- | --- | --- |
+| L1 | **Galerias de fotos** (`midias.json`): fotos de conteúdo agrupadas por empreendimento/página e etapa/seção, com legenda e data (figcaption, `<time>`, `data-etapa`, data no arquivo); logos e ícones fora | ✅ |
+| L2 | **Foto no chat**: "última foto da área de lazer" mostra a imagem, a data e o botão "Ver todas as fotos de ..." (âncora da seção); "foto anterior/próxima/primeira", por data e por grupo | ✅ |
+| L3 | **Perfil da pessoa logada** (`perfil.json`): moldes por setor (12 setores + geral) com `{campos}`, trechos opcionais `[...]`, apelidos; sem dados pede login; campo faltando não é inventado | ✅ |
+| L4 | **Três jeitos de receber os dados** (fonte do próprio site, `agente.identificar`, JSON na página), só em `sessionStorage` por 15 min, sem campos sensíveis; servidor nunca recebe os dados | ✅ |
+| L5 | **Perfil + foto**: "como está a obra do meu apartamento?" responde com etapa, % e a foto mais recente da etapa no empreendimento da pessoa | ✅ |
+| L6 | Observação descobre a fonte do perfil (`/api/me`, `/api/minha-...`) só pelos nomes dos campos e liga se algum molde fecha | ✅ |
+| L7 | CLI `perfil` (`--fonte`, `--ativar`, `--desativar`, `--testar usuario.json`) | ✅ |
+| L8 | **Várias perguntas numa frase** respondidas em ordem, com o assunto citado e botões nomeados (era I8 em parte) | ✅ |
+| L9 | **Tom** (amigável/formal/neutro) com aberturas que não se repetem; **perguntas relacionadas** depois da FAQ (era I8) | ✅ |
+| L10 | **Empatia**: frustração vira acolhimento + contatos, não "não entendi" | ✅ |
+| L11 | Nome da pessoa na saudação e nas respostas; indicador de "digitando" (respeita reduzir movimento) | ✅ |
+| L12 | **Passagem para humano com resumo**: WhatsApp abre com as últimas perguntas (era I2) | ✅ |
+| L13 | Setor construção com termos de incorporadora (habite-se, fundação, alvenaria, acabamento, vistoria, incorporação) | ✅ |
+
+## 0.9 — Conversa guiada e proatividade 🔜
 
 | # | Item | Por quê |
 | --- | --- | --- |
-| I1 | **Fora do escopo por setor** ("vocês vendem carro?" numa clínica): resposta "isso não é com a gente" + o que o site faz | Diferenciar "não entendi" de "não fazemos isso" |
-| I2 | **Passar para humano com resumo**: link de WhatsApp/e‑mail com as últimas mensagens já escritas | Atendimento continua sem a pessoa repetir tudo |
-| I3 | **BM25** no lugar do IDF simples | Conteúdos longos e catálogos grandes ranqueiam melhor |
-| I4 | **Mensagem proativa por página** (1 por sessão, configurável): "Dúvidas sobre o agendamento?" | Agente aparece na hora certa |
-| I5 | **Confirmação antes de levar a uma interação com login** | Menos frustração para quem não tem conta |
-| I6 | Editor visual com as três bases novas (glossário, conteúdos, interações) | Ajuste sem editar JSON |
-| I7 | Glossário próprio do site: termos repetidos nas páginas sem definição viram sugestão no `aprender` | Cobre nichos (ex.: "captador" na Violet Voltage) |
-| I8 | Tom configurável (formal, descontraído) e variações de resposta | Menos repetição |
+| M1 | **Pergunta de esclarecimento por lacuna** (slot filling): "fotos da área de lazer" com 2 empreendimentos → "De qual? Residencial Sol ou Parque Verde" e guarda a resposta | É o que Fin/Lyro fazem com "asks before answering" |
+| M2 | **Mensagem proativa** por página/evento (1 por sessão, configurável): "Quer ver as fotos mais recentes desta obra?" | Proactive Lyro e Zendesk: mais conversas na hora certa |
+| M3 | **Fora do escopo por setor** ("vocês vendem carro?" numa clínica) (era I1) | Diferenciar "não entendi" de "não fazemos isso" |
+| M4 | **BM25** no lugar do IDF simples (era I3) | Conteúdos longos e catálogos grandes |
+| M5 | **Confirmação antes de levar a uma interação com login** (era I5) | Menos frustração |
+| M6 | **Captura de contato conversacional**: nome + e-mail/telefone perguntados um a um, conferidos, e o formulário do próprio site preenchido para a pessoa enviar (era J1) | Chatbase Collect Leads, sem banco novo |
+| M7 | Resposta curta/detalhada ("explica melhor" mostra o resumo maior do conteúdo) | Fin: tamanho da resposta |
+| M8 | Galerias de vídeo (YouTube/Vimeo do próprio site) e PDFs (memorial, cardápio) como cartões | Hyperleap: ativos viram cartões |
+| M9 | **Perfil com listas** (várias unidades, vários pedidos): "qual unidade?" e resposta por item | Clientes com mais de um imóvel/pedido |
 
-## 0.9 — Ação e medição ⏳
-
-| # | Item |
-| --- | --- |
-| J1 | **Formulário curto dentro do chat** que só preenche a página do próprio site (a pessoa confere e envia) |
-| J2 | **Painel do dono** no modo servidor: perguntas mais feitas, taxa de "não entendi" (meta abaixo de 10%), interações mais pedidas |
-| J3 | Respostas em inglês/espanhol quando o site está nesse idioma (textos fixos por idioma; glossário já é bilíngue) |
-| J4 | Setores novos por contribuição (um arquivo por setor, com teste automático de qualidade) |
-| J5 | Atualização incremental: rodar de novo mescla páginas, conteúdos e interações novas sem perder edições (E3) |
-
-## 1.0 — Plataforma ⏳
+## 1.0 — Medição, idiomas e plataforma ⏳
 
 | # | Item |
 | --- | --- |
-| K1 | Catálogo de ações (`acoes.json`) com parâmetros e permissão; a IA opcional escolhe a ação (G1) |
-| K2 | Servidor MCP expondo as mesmas ações para outros assistentes (G2) |
-| K3 | Verificação de domínio antes de ler um site como serviço hospedado (G4) |
-| K4 | Publicação no npm e executável assinado (E5) |
+| N1 | **Painel do dono** (modo servidor): perguntas mais feitas, taxa de "não entendi" (meta < 10%), fotos e interações mais pedidas, CSAT de 1 clique (era J2) |
+| N2 | **Simulações**: conversas de teste salvas e repetidas a cada mudança da base, com diferença antes/depois |
+| N3 | Respostas em inglês/espanhol quando o site está nesse idioma (era J3) |
+| N4 | Editor visual das bases novas: glossário, conteúdos, interações, galerias e moldes de perfil (era I6) |
+| N5 | Glossário próprio do site sugerido no `aprender` (era I7) |
+| N6 | Atualização incremental que preserva edições (era J5); setores por contribuição (era J4) |
+| N7 | Catálogo de ações (`acoes.json`) + servidor MCP (eram K1/K2); verificação de domínio (K3); npm e executável assinado (K4) |
 
 ## Como cada versão é validada
 
@@ -61,3 +78,5 @@ Arquivos novos na base: `setor.json`, `conteudos.json`, `interacoes.json`
 - `agent-generator avaliar`: acerto geral e a parte "Glossário do setor, conteúdos e
   interações".
 - Teste em projeto real (Violet Voltage e o café de exemplo) antes de publicar a versão.
+- 0.8: fixture `tests/fixtures/construtora/` (2 empreendimentos, 6 galerias, 11 fotos) e teste do
+  widget num navegador de verdade (foto carregada, login pedido, perfil completado, sem erros).

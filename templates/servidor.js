@@ -8,7 +8,7 @@ import { createAgent } from "./nucleo/agent.js";
 import { anonymize, isMiss } from "./nucleo/privacy.js";
 import { iaConfig, withIa } from "./nucleo/ia.js";
 
-const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes"];
+const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes", "midias", "perfil"];
 
 export async function loadKnowledgeFromDisk(dir = new URL("./conhecimento/", import.meta.url)) {
   const raw = {};
@@ -32,6 +32,10 @@ const sanitizeContext = (c) => ({
   ...(c?.filtros && typeof c.filtros === "object" && !Array.isArray(c.filtros)
     ? { filtros: Object.fromEntries(Object.entries(c.filtros).filter(([k, v]) => /^[a-z]{2,12}$/.test(k) && ((typeof v === "string" && v.length <= 60) || (typeof v === "number" && Number.isFinite(v)))).slice(0, 8)) }
     : {}),
+  // Versão 0.7/0.8: falhas seguidas (recuperação em etapas) e a galeria/foto da última resposta.
+  ...(Number.isInteger(c?.falhas) && c.falhas >= 0 && c.falhas <= 10 ? { falhas: c.falhas } : {}),
+  ...(typeof c?.galeria === "string" && /^[a-z0-9-]{1,60}$/.test(c.galeria) ? { galeria: c.galeria } : {}),
+  ...(Number.isInteger(c?.foto) && c.foto >= 0 && c.foto <= 100 ? { foto: c.foto } : {}),
 });
 // Versão 0.4: frase não entendida vai para faltas.jsonl (sem dado pessoal), para o comando
 // "agent-generator aprender" e para o modo treino mostrarem primeiro.

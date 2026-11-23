@@ -9,6 +9,7 @@ import { mapItems } from "../agent/catalog-map.js";
 import { lookupFields, listOf } from "../agent/lookup.js";
 import { normalize } from "../agent/text.js";
 import { candidateInteraction } from "../capabilities/glossary.js";
+import { fillTemplate } from "../agent/context.js";
 
 const SEARCH_KEYS = ["q", "busca", "search", "s", "termo", "query", "pesquisa", "keyword", "k"];
 const LOGIN = /(login|entrar|signin|sign-in|acesso|acessar|auth)/i;
@@ -31,6 +32,34 @@ const EXAMPLES = {
 };
 const joinList = (items) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} e ${items.at(-1)}`);
 const pathOnly = (url) => String(url || "").split(/[?#]/)[0] || "/";
+
+// Versão 0.8: caminhos típicos dos dados de quem está logado.
+const PROFILE = /\/(me|eu|perfil|profile|conta|account|usuario|user|cliente|customer|minha[-_]?\w*|meu[-_]?\w*|my[-_]?\w*|unidade|session)(\/|$)/i;
+export function keyPaths(obj, prefix = "", depth = 0, out = []) {
+  if (!obj || typeof obj !== "object" || depth > 3 || out.length >= 80) return out;
+  const node = Array.isArray(obj) ? obj[0] : obj;
+  if (!node || typeof node !== "object") return out;
+  for (const [k, v] of Object.entries(node)) {
+    if (!/^[\w-]{1,40}$/.test(k)) continue;
+    const path = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === "object") keyPaths(v, path, depth + 1, out);
+    else out.push(path);
+  }
+  return out;
+}
+// Moldes do perfil que os campos observados conseguem preencher.
+export function profileFits(perguntas = [], campos = [], apelidos = {}) {
+  const sample = {};
+  for (const path of campos) {
+    const keys = path.split(".");
+    let o = sample;
+    keys.forEach((k, i) => {
+      if (i === keys.length - 1) o[k] = "x";
+      else o = o[k] && typeof o[k] === "object" ? o[k] : (o[k] = {});
+    });
+  }
+  return perguntas.filter((q) => !fillTemplate(q.resposta, sample, { apelidos }).faltando.length).map((q) => q.id);
+}
 
 export function summarize({ events = [], exchanges = [] }) {
   // Versão 0.5: chaves do navegador que guardam o token de login (só nomes).
@@ -85,6 +114,7 @@ export function summarize({ events = [], exchanges = [] }) {
 
   const listas = [];
   const acoes = [];
+  const perfis = [];
   let needsLogin = false;
   for (const x of exchanges) {
     // A própria base do agente (widget lendo conhecimento/*.json) não é dado do site.
@@ -95,6 +125,10 @@ export function summarize({ events = [], exchanges = [] }) {
     }
     if (x.status === 401 || x.status === 403) needsLogin = true;
     if (x.status !== 200 || x.resposta === undefined) continue;
+    // Versão 0.8: objeto lido com a sessão em caminho de "minha conta" (/api/me, /api/perfil...)
+    // = candidato a fonte do perfil. Só os NOMES dos campos ficam no relatório, nunca os valores.
+    if (x.comSessao && x.resposta && typeof x.resposta === "object" && !Array.isArray(x.resposta) && PROFILE.test(x.caminho) && !/admin/i.test(x.caminho) && !perfis.some((p) => p.caminho === x.caminho))
+      perfis.push({ caminho: x.caminho, original: x.original, campos: keyPaths(x.resposta) });
     const items = listOf(x.resposta).filter((i) => i && typeof i === "object" && !Array.isArray(i));
     if (!items.length) continue;
     const fields = lookupFields(items[0]);
@@ -116,6 +150,7 @@ export function summarize({ events = [], exchanges = [] }) {
     acoes,
     precisaLogin: needsLogin,
     tokens,
+    perfis,
   };
 }
 
@@ -219,6 +254,14 @@ export function applyObservation(base, obs) {
     k.consultas.auth = { tipo: "bearer", onde: t.onde, chave: t.chave, ...(t.campo ? { campo: t.campo } : {}) };
     changes.auth = `token em ${t.onde}["${t.chave}"]${t.campo ? `.${t.campo}` : ""}`;
   }
+  // Versão 0.8: fonte do perfil vista na sessão. Liga o perfil se algum molde do setor fica
+  // completo com os campos que a API devolve (sem isso, só sugere no relatório).
+  const prof = (obs.perfis || [])[0];
+  if (prof && k.perfil && !k.perfil.fonte) {
+    const fits = profileFits(k.perfil.perguntas || [], prof.campos, k.perfil.apelidos || {});
+    k.perfil = { ...k.perfil, fonte: prof.original, ativo: fits.length > 0 };
+    changes.perfil = `${prof.original} (${fits.length ? `liga: ${fits.join(", ")}` : `campos ${prof.campos.slice(0, 6).join(", ")}; nenhum molde completo, ajuste perfil.json`})`;
+  }
   // Catálogo da API: só quando a base ainda não tem catálogo.
   const candidate = obs.listas.filter((l) => l.catalogo && !l.status && !l.caminho.includes(":id") && !/admin/i.test(l.caminho)).sort((a, b) => b.itens - a.itens)[0];
   if (candidate && !k.catalogo.itens?.length && !k.catalogo.url) {
@@ -251,6 +294,7 @@ export function observationText(obs, changes, { minutos } = {}) {
     ...(changes.buscas.length ? [`- Busca do site: ${changes.buscas[0]} (o agente monta o link com o termo)`] : []),
     ...(changes.login ? [`- Página de login: ${changes.login}`] : []),
     ...(changes.auth ? [`- Consultas com login por token: ${changes.auth}`] : []),
+    ...(changes.perfil ? [`- Perfil do usuário (dados da conta): ${changes.perfil}`] : []),
     ...changes.dados.map((d) => `- Consulta da conta: ${d}`),
     ...changes.candidatas.map((c) => `- Interação detectada e bloqueada: ${c}`),
     ...(changes.catalogo ? [`- Catálogo lido da API: ${changes.catalogo}${changes.linkModelo ? ` (link de cada item: ${changes.linkModelo})` : ""}`] : []),

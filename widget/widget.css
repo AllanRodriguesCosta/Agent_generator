@@ -51,3 +51,17 @@
   .agw-panel { animation: agw-in 0.18s ease-out; }
   @keyframes agw-in { from { opacity: 0; transform: translateY(8px); } }
 }
+/* Versão 0.8: fotos no chat e indicador de digitação. */
+.agw-photos { display: grid; gap: 6px; margin: 8px 0 0; }
+.agw-photo { margin: 0; border: 1px solid var(--agw-line); border-radius: 10px; overflow: hidden; background: var(--agw-bg); }
+.agw-photo a { display: block; }
+.agw-photo img { display: block; width: 100%; max-height: 220px; object-fit: cover; background: var(--agw-soft); }
+.agw-photo figcaption { padding: 6px 8px; color: var(--agw-muted); font-size: 13px; }
+.agw-typing { display: inline-flex; gap: 4px; align-items: center; min-height: 34px; }
+.agw-typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--agw-muted); opacity: 0.5; }
+@media (prefers-reduced-motion: no-preference) {
+  .agw-typing span { animation: agw-dot 1s infinite ease-in-out; }
+  .agw-typing span:nth-child(2) { animation-delay: 0.15s; }
+  .agw-typing span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes agw-dot { 50% { opacity: 1; transform: translateY(-3px); } }
+}

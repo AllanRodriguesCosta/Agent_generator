@@ -135,3 +135,19 @@ node $AG/bin/agent-generator.js setor $PROJ --setor saude --json
 - A avaliação tem a linha "Glossário do setor, conteúdos e interações"; erros ali costumam ser
   título de conteúdo repetido ou interação com exemplos parecidos com outra intenção.
 - Detalhes: [docs/DOMINIO-CONTEUDO-INTERACOES.md](docs/DOMINIO-CONTEUDO-INTERACOES.md).
+
+## Versão 0.8: fotos, perfil da pessoa logada e conversa natural
+
+```bash
+# Ver galerias e moldes de perfil; ligar com a API do próprio site e testar com dados de exemplo
+node $AG/bin/agent-generator.js perfil $PROJ --json
+node $AG/bin/agent-generator.js perfil $PROJ --fonte /api/minha-conta --testar usuario-exemplo.json --json
+```
+
+- Antes de ligar, confira se a rota existe e responde com a sessão (401 sem login). Ajuste
+  `perfil.json > perguntas[].resposta` aos nomes dos campos dessa rota (ou use `apelidos`).
+- Se o site não tem essa rota, use `--ativar` e chame `agente.identificar({...})` depois do login
+  e `agente.sair()` no logout. Nunca passe senha, token, CPF ou cartão (são descartados).
+- Fotos: o raio X agrupa pela seção (`h2`/`h3`) ou por `data-etapa`; para datas certas, use
+  `<time datetime="AAAA-MM-DD">` na figura. Confira `agente/conhecimento/midias.json`.
+- Detalhes: [docs/CONTEXTO-E-MIDIA.md](docs/CONTEXTO-E-MIDIA.md).

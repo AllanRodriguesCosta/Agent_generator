@@ -1,6 +1,6 @@
 # Formato da base de conhecimento (versão 1)
 
-Onze arquivos JSON (`fluxos.json` e `consultas.json` desde a 0.3; `acoes.json` com as capacidades aprovadas; `setor.json`, `conteudos.json` e `interacoes.json` desde a 0.7) em `agente/conhecimento/`. Todos são opcionais; o que faltar vira padrão. Ao
+Treze arquivos JSON (`fluxos.json` e `consultas.json` desde a 0.3; `acoes.json` com as capacidades aprovadas; `setor.json`, `conteudos.json` e `interacoes.json` desde a 0.7; `midias.json` e `perfil.json` desde a 0.8) em `agente/conhecimento/`. Todos são opcionais; o que faltar vira padrão. Ao
 carregar, o agente confere tudo: corta textos longos, descarta links perigosos (`javascript:`,
 `data:`) e ignora entradas incompletas (o comando `avaliar` lista o que foi ignorado).
 
@@ -19,7 +19,9 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
   "posicao": "direita",
   "moeda": "BRL",
   "endpoint": "",
-  "registro": ""
+  "registro": "",
+  "tom": "amigavel",
+  "digitacao": 12
 }
 ```
 
@@ -34,6 +36,9 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
   Antes de sair do navegador, e-mail, telefone, CPF/CNPJ, códigos e números longos viram
   marcadores.
 - Nos textos, `{site}` e `{nome}` viram o nome do site e do assistente.
+- `tom` (0.8): `"amigavel"` (padrão), `"formal"` ou `"neutro"`. Muda só as frases de abertura e
+  o acolhimento; o conteúdo continua o da base. `"neutro"` desliga as duas coisas.
+- `digitacao` (0.8): milissegundos por caractere do indicador "digitando" (0 a 40; teto de 1,2 s).
 
 ## intencoes.json
 
@@ -199,3 +204,14 @@ site. Formato, regras e exemplos: [DOMINIO-CONTEUDO-INTERACOES.md](DOMINIO-CONTE
 Ao carregar, o agente confere: glossário sem termo ou definição, conteúdo sem resumo e interação
 sem link são ignorados; links perigosos são descartados. Bases antigas continuam funcionando:
 `gerar` sem `--forcar` só escreve os arquivos que ainda não existem.
+
+## midias.json e perfil.json (0.8)
+
+- `midias.json`: `{ "galerias": [{ id, titulo, etapa, grupo, link, termos, itens: [{ src, legenda, data }] }] }`.
+  Até 80 galerias e 60 fotos por galeria; `data` no formato AAAA-MM-DD (ou vazio); `src` e `link`
+  passam pela mesma conferência de links seguros.
+- `perfil.json`: `{ ativo, fonte, validadeMin, pagina, apelidos, perguntas: [{ id, rotulo, exemplos, resposta, midia, grupo, acoes }] }`.
+  `fonte` só aceita caminho do próprio site; pergunta sem resposta ou com menos de 2 exemplos é
+  ignorada; com `ativo: false` (padrão gerado) as perguntas não entram no classificador.
+
+Como gerar, editar e ligar: [CONTEXTO-E-MIDIA.md](CONTEXTO-E-MIDIA.md).

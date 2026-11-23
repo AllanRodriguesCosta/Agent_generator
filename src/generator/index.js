@@ -202,5 +202,7 @@ export function generateKnowledge(report, { setor: forcarSetor } = {}) {
       : `Setor: ${s.nome}${s.secundario ? ` + ${s.secundario}` : ""} (${Math.round(s.confianca * 100)}%${s.forcado ? ", escolhido à mão" : ""}; sinais: ${s.ranking[0]?.evidencias.slice(0, 3).join(", ")}). Glossário com ${s.glossario.length} termos.`,
   );
   notes.push(`Conteúdos resumidos: ${knowledge.conteudos.length}. Interações mapeadas: ${knowledge.interacoes.map((x) => x.tipo).join(", ") || "nenhuma"}.`);
+  const fotos = knowledge.midias.galerias.reduce((n, g) => n + g.itens.length, 0);
+  notes.push(`Galerias de fotos: ${knowledge.midias.galerias.length} (${fotos} fotos). Perfil do usuário: ${knowledge.perfil.perguntas.length} moldes do setor, desligado (agent-generator perfil <pasta> --fonte /api/... para ligar).`);
   return { knowledge, notes, domain };
 }

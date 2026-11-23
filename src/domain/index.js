@@ -1,4 +1,4 @@
-// Conhecimento de domínio (versão 0.7): junta as três bases novas que o gerador cria a partir do
+// Conhecimento de domínio (versão 0.7/0.8): junta as bases novas que o gerador cria a partir do
 // raio X e que a observação refina:
 //   setor.json       setor detectado + glossário comum do setor (português e inglês) + sinônimos
 //   conteudos.json   resumos extrativos das seções informativas, com link para o original
@@ -7,6 +7,8 @@ import { detectSector, textsFromReport } from "./detect.js";
 import { SECTORS, sectorById } from "./sectors.js";
 import { buildContents } from "./contents.js";
 import { mapInteractions } from "./interactions.js";
+import { buildMedia } from "./media.js";
+import { buildProfile } from "./profile.js";
 import { normalize } from "../agent/text.js";
 
 const slug = (v) => normalize(v).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -44,7 +46,11 @@ export function buildDomain(report, { setor: forcar } = {}) {
   const pack = sectorById(setor.id);
   const conteudos = buildContents(report);
   const interacoes = mapInteractions(report, { setor: pack });
-  return { setor, conteudos, interacoes };
+  // Versão 0.8: galerias de fotos e moldes de perfil do setor (desligados até o dono configurar).
+  const midias = { galerias: buildMedia(report) };
+  const login = interacoes.find((x) => x.tipo === "login")?.link || "";
+  const perfil = buildProfile(setor.id, { login, secundario: setor.secundario });
+  return { setor, conteudos, interacoes, midias, perfil };
 }
 
 /**

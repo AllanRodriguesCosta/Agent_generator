@@ -1,6 +1,6 @@
 # Próximas melhorias (histórico até a 0.6)
 
-> **Roadmap atual: [ROADMAP.md](ROADMAP.md)** (0.7 em diante: setor, conteúdos, interações e
+> **Roadmap atual: [ROADMAP.md](ROADMAP.md)** (0.8: fotos no chat, perfil da pessoa logada e conversa natural; pesquisa em [PESQUISA-MERCADO.md](PESQUISA-MERCADO.md)) (0.7 em diante: setor, conteúdos, interações e
 > recuperação em etapas). B6 ("Você quis dizer") e parte de B7 (oferecer humano) foram feitos na
 > 0.7.
 

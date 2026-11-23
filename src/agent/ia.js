@@ -126,14 +126,15 @@ export async function interpret(mensagem, knowledge, config, { fetchImpl = fetch
 
 // Envolve o agente: responde local; só o que ele não entende vai à IA (com limite por minuto).
 export function withIa(agent, config, { fetchImpl, now } = {}) {
-  if (!config) return { ...agent, ia: null, replyAsync: async (m, c) => agent.reply(m, c) };
+  if (!config) return { ...agent, ia: null, replyAsync: async (m, c, o) => agent.reply(m, c, o) };
   const slot = limiter(config.porMinuto, now);
-  async function replyAsync(mensagem, contexto = {}) {
-    const local = agent.reply(mensagem, contexto);
+  // opcoes.usuario (0.8) fica no agente local; a IA recebe só a frase, nunca os dados da pessoa.
+  async function replyAsync(mensagem, contexto = {}, opcoes = {}) {
+    const local = agent.reply(mensagem, contexto, opcoes);
     if (!isMiss(local) || !slot()) return local;
     const g = await interpret(mensagem, agent.knowledge, config, { fetchImpl });
     if (g?.frase) {
-      const again = agent.reply(g.frase, contexto);
+      const again = agent.reply(g.frase, contexto, opcoes);
       if (!isMiss(again)) return { ...again, fonte: "ia-interpretou", interpretado: g.frase, faltaLocal: true };
     }
     if (g?.texto) return { ...local, texto: g.texto, intencao: "ia", fonte: "ia", faltaLocal: true };

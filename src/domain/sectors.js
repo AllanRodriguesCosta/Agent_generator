@@ -104,7 +104,7 @@ export const SECTORS = [
   {
     id: "construcao",
     nome: "Arquitetura, engenharia e construção",
-    sinais: [["arquitet", 3], ["projeto arquitet", 3], ["interiores", 3], ["interior design", 3], ["reforma", 3], ["obra", 3], ["construc", 3], ["engenhar", 2], ["planta", 2], ["paisagis", 3], ["render!", 1], ["3d!", 1], ["memorial descritivo", 3], ["art!", 1], ["rrt!", 3], ["alvara", 3], ["bim!", 3], ["revit", 3], ["autocad", 3], ["marcenar", 3]],
+    sinais: [["arquitet", 3], ["projeto arquitet", 3], ["interiores", 3], ["interior design", 3], ["reforma", 3], ["obra", 3], ["construc", 3], ["engenhar", 2], ["planta", 2], ["paisagis", 3], ["render!", 1], ["3d!", 1], ["memorial descritivo", 3], ["art!", 1], ["rrt!", 3], ["alvara", 3], ["bim!", 3], ["revit", 3], ["autocad", 3], ["marcenar", 3], ["construtora", 3], ["incorporad", 3], ["andamento da obra", 3], ["acompanhe a obra", 3], ["alicerce", 2], ["habite-se", 3], ["canteiro", 2]],
     schema: ["HomeAndConstructionBusiness", "GeneralContractor", "Architect"],
     glossario: [
       { termo: "Projeto arquitetônico", sinonimos: ["architectural design", "projeto"], definicao: "Conjunto de desenhos e documentos que definem como a construção vai ser: plantas, cortes, fachadas e especificações." },
@@ -116,8 +116,15 @@ export const SECTORS = [
       { termo: "BIM", sinonimos: ["building information modeling"], definicao: "Metodologia em que o projeto é um modelo 3D com informações de materiais, custos e prazos." },
       { termo: "Render", sinonimos: ["renderizacao", "imagem 3d", "perspectiva"], definicao: "Imagem realista gerada a partir do modelo 3D, para visualizar o resultado antes da obra." },
       { termo: "Memorial descritivo", sinonimos: ["especificacao"], definicao: "Documento que descreve materiais, acabamentos e técnicas que serão usados na obra." },
+      // Versão 0.8: termos de construtora/incorporadora (acompanhamento de obra).
+      { termo: "Habite-se", sinonimos: ["certificado de conclusao", "occupancy permit"], definicao: "Documento da prefeitura que atesta que o imóvel foi construído conforme o projeto aprovado e pode ser ocupado." },
+      { termo: "Fundação", sinonimos: ["alicerce", "foundation", "estacas"], definicao: "Parte da obra que fica abaixo do solo e transmite o peso do prédio para o terreno; é uma das primeiras etapas." },
+      { termo: "Alvenaria", sinonimos: ["paredes", "masonry", "vedacao"], definicao: "Etapa em que as paredes são levantadas com blocos ou tijolos, depois da estrutura." },
+      { termo: "Acabamento", sinonimos: ["finishing", "revestimento", "pintura"], definicao: "Etapa final da obra: pisos, revestimentos, pintura, louças e metais." },
+      { termo: "Vistoria de entrega", sinonimos: ["vistoria", "inspection", "entrega das chaves"], definicao: "Visita em que o comprador confere a unidade pronta, aponta ajustes e recebe as chaves." },
+      { termo: "Incorporação", sinonimos: ["incorporadora", "memorial de incorporacao", "real estate development"], definicao: "Registro em cartório que permite vender as unidades de um prédio ainda na planta ou em obras." },
     ],
-    sinonimos: [["reforma", "renovacao", "remodelacao", "renovation"], ["projeto", "design", "planta"], ["orcamento", "proposta", "quote", "estimativa"], ["obra", "construcao", "construction"]],
+    sinonimos: [["reforma", "renovacao", "remodelacao", "renovation"], ["projeto", "design", "planta"], ["orcamento", "proposta", "quote", "estimativa"], ["obra", "construcao", "construction"], ["fundacao", "alicerce", "foundation"], ["lazer", "area de lazer", "recreacao", "leisure"], ["torre", "estrutura", "predio", "tower"]],
     frases: {
       orcamento: ["quanto custa um projeto", "quero orçar uma reforma", "pedir orçamento de obra", "request a quote"],
       agendamento: ["marcar uma visita técnica", "agendar reunião com o arquiteto"],

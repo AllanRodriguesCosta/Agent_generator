@@ -40,6 +40,14 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
   segunda vez, oferece o atendimento humano. Ver
   [docs/DOMINIO-CONTEUDO-INTERACOES.md](docs/DOMINIO-CONTEUDO-INTERACOES.md) e o
   [roadmap](docs/ROADMAP.md).
+- **Fotos, perfil da pessoa logada e conversa natural (0.8):** o raio X monta **galerias** com as
+  fotos de cada página por etapa/seção ("última foto da área de lazer" mostra a foto no chat e o
+  botão para a galeria completa). Com o **perfil** ligado, o agente responde sobre os dados de quem
+  está logado ("como está a obra do meu apartamento?" → etapa, % e a foto da etapa), com moldes
+  por setor e os dados só na aba do navegador. Responde **várias perguntas numa frase**, varia o
+  tom, sugere perguntas relacionadas, acolhe reclamações e leva o resumo da conversa ao WhatsApp.
+  Ver [docs/CONTEXTO-E-MIDIA.md](docs/CONTEXTO-E-MIDIA.md) e a
+  [pesquisa de mercado](docs/PESQUISA-MERCADO.md).
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 
@@ -124,6 +132,7 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 | `aprender [pasta]` | Agrupa as frases que o agente não entendeu (do servidor ou exportadas do navegador) e sugere onde encaixar; `--aplicar` pergunta grupo a grupo |
 | `editar [pasta]` | Editor visual da base no navegador, com teste do rascunho, acerto e salvamento com backup |
 | `setor [pasta]` | Setor detectado e ranking com as evidências; `--setor <id>` troca (também vale em `criar`, `gerar` e `site`) |
+| `perfil [pasta]` | (0.8) Respostas com os dados de quem está logado: `--fonte /api/minha-conta` liga e lê a API do próprio site; `--ativar` (o site chama `agente.identificar`); `--desativar`; `--testar usuario.json`. Lista as galerias de fotos |
 | `site <url> [pasta]` | Site já publicado: lê as páginas públicas e cria `agente-servico/` (serviço para publicar à parte, com IA opcional). `--max-paginas`, `--pausa`, `--navegador`, `--so-conteudo`, `--sim` |
 
 Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`, `scan`, `generate`,
@@ -137,7 +146,7 @@ Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`
 ## Limites (de propósito)
 
 - É um agente **simples**: responde com o que está na base (com conversas em etapas, consultas da
-  conta e memória da última lista). Sem IA, não conversa livremente (com IA, ela só traduz o
+  conta, perfil da pessoa logada, fotos do site e memória da última lista). Sem IA, não conversa livremente (com IA, ela só traduz o
   pedido para a base), não lembra de conversas antigas e não
   faz compras ou cadastros pelo visitante; ele leva às páginas certas.
 - O raio X lê o código, não o banco de dados. Catálogo em banco: aponte `catalogo.url` para a
@@ -146,8 +155,9 @@ Todos aceitam `--json` (saída para scripts e IAs). Também em inglês: `create`
 
 Observar e treinar (0.3): [docs/OBSERVAR-E-TREINAR.md](docs/OBSERVAR-E-TREINAR.md).
 
-Roadmap (0.7 em diante): [docs/ROADMAP.md](docs/ROADMAP.md), com a pesquisa em
-[docs/PESQUISA-AGENTES.md](docs/PESQUISA-AGENTES.md). Histórico das versões 0.3 a 0.6:
+Roadmap (0.7 em diante): [docs/ROADMAP.md](docs/ROADMAP.md), com as pesquisas em
+[docs/PESQUISA-AGENTES.md](docs/PESQUISA-AGENTES.md) e
+[docs/PESQUISA-MERCADO.md](docs/PESQUISA-MERCADO.md). Histórico das versões 0.3 a 0.6:
 [docs/MELHORIAS.md](docs/MELHORIAS.md).
 A visão de produto (chatbot local, fácil de configurar e IA limitada por capacidades aprovadas)
 está em [docs/ROADMAP-PRODUTO.md](docs/ROADMAP-PRODUTO.md).
