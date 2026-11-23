@@ -118,3 +118,20 @@ node $AG/bin/agent-generator.js site https://site-do-usuario.com.br ./agente-sit
   aviso de Content-Security-Policy que está em `avisos`.
 - IA opcional só no serviço, por variáveis (`IA_PROVEDOR`, `IA_CHAVE`, `IA_MODELO`, `IA_URL`);
   nunca grave chaves em arquivos. Detalhes: [docs/SITE-PUBLICADO.md](docs/SITE-PUBLICADO.md).
+
+## Versão 0.7: setor, conteúdos e interações
+
+```bash
+# Ver o setor detectado (ranking com evidências) e trocar, se estiver errado
+node $AG/bin/agent-generator.js setor $PROJ --json
+node $AG/bin/agent-generator.js setor $PROJ --setor saude --json
+```
+
+- Confira `agente/conhecimento/interacoes.json`: cada interação precisa de um `link` que existe
+  no site. Se faltar uma (ex.: página de orçamento feita em JavaScript), rode `observar` e use a
+  página: o formulário enviado vira interação.
+- Termos de nicho do negócio vão em `setor.json > glossario` (`termo`, `sinonimos`, `definicao`).
+  Nunca escreva ali prazo, preço ou política: isso vai na FAQ, com o texto do próprio site.
+- A avaliação tem a linha "Glossário do setor, conteúdos e interações"; erros ali costumam ser
+  título de conteúdo repetido ou interação com exemplos parecidos com outra intenção.
+- Detalhes: [docs/DOMINIO-CONTEUDO-INTERACOES.md](docs/DOMINIO-CONTEUDO-INTERACOES.md).

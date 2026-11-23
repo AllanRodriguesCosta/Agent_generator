@@ -14,6 +14,13 @@ const BUY_WORDS = /\b(quero|queria|procuro|procurando|preciso|comprar|compra|tem
 const PAGE_WORDS = /\b(onde|pagina|link|acessar|acesso|abrir|abro|ir para|vou para|encontro|fica|achar|acho)\b/;
 // "procurar/buscar X no site": vira link pronto da busca do próprio site (consultas.buscas).
 const SEARCH = /^(?:(?:eu )?(?:quero|queria|preciso|pode|consegue|me ajuda a)\s+)?(?:procur\w*|busc\w*|pesquis\w*|encontr\w*|achar|ache)\s+(?:por\s+|pel[oa]s?\s+|um\s+|uma\s+|o\s+|a\s+)?(.{2,60}?)(?:\s+no site|\s+na loja|\s+aqui)?[?!.]*$/;
+// Versão 0.7: pedido de definição ("o que é CT-e?", "what is an API?") e de explicação ("me fala
+// sobre a reciclagem", "como funciona o plano"). O resto da frase é o assunto.
+const DEFINE = /^(?:(?:e|mas|ah|entao)\s+)?(?:o que (?:e|eh|sao|significa|quer dizer)|oq (?:e|eh|significa)|que e|qual (?:o )?significado d[eoa]s?|significado d[eoa]s?|defin(?:e|a|icao de)|what(?:'s| is| are| does)|meaning of)\s+(?:o |a |os |as |um |uma |an? |the )?(.{2,60}?)(?:\s+(?:mean|significa))?\s*[?!.]*$/;
+const EXPLAIN = /^(?:(?:me |pode |poderia )?(?:explica\w*|fala\w*|conta\w*|fale|conte)\s+(?:sobre|de|do|da|dos|das|o que e|como funciona)\s+|(?:como funciona|quero saber (?:mais )?sobre|saber mais sobre|informacoes sobre|tell me about|explain)\s+)(?:o |a |os |as )?(.{2,80}?)\s*[?!.]*$/;
+// Interações que já têm intenção própria na base (contato, conta): o classificador não as treina
+// de novo, para não dividir os exemplos; a busca ainda acha a interação pelo título.
+const SHARED_TYPES = new Set(["contato", "login", "cadastro", "busca"]);
 const ORDINAL = { 1: ["1", "um", "primeir", "a primeira", "o primeiro"], 2: ["2", "dois", "duas", "segund"], 3: ["3", "tres", "terceir"], 4: ["4", "quatro", "quart"] };
 
 // "até R$ 1.500", "menos de 300", "500 reais", "no máximo 2 mil" → valor máximo em reais.
@@ -41,12 +48,13 @@ const fill = (text, agente) => text.replaceAll("{site}", agente.site).replaceAll
 
 export function createAgent(input) {
   const { knowledge, problems } = checkKnowledge(input);
-  const { agente, intencoes, faq, paginas, catalogo, fluxos, consultas } = knowledge;
+  const { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, setor, conteudos, interacoes } = knowledge;
   // Fluxos (conversa em etapas) e consultas da conta entram no classificador como intenções.
   const examples = {
     ...Object.fromEntries(Object.entries(intencoes).map(([k, v]) => [k, v.exemplos])),
     ...Object.fromEntries(fluxos.map((f) => [`fluxo__${f.id}`, f.gatilhos])),
     ...Object.fromEntries(consultas.dados.map((d) => [`consulta__${d.id}`, d.exemplos])),
+    ...Object.fromEntries(interacoes.filter((x) => x.exemplos.length >= 2 && !SHARED_TYPES.has(x.tipo)).map((x) => [`interacao__${x.id}`, x.exemplos])),
   };
   const model = Object.keys(examples).length >= 2 ? train(examples) : null;
   const index = createIndex([
@@ -60,7 +68,11 @@ export function createAgent(input) {
       secundario: p.descricao,
       dados: p,
     })),
-  ]);
+    // Versão 0.7: glossário do setor, resumos de conteúdo e interações do site.
+    ...setor.glossario.map((g) => ({ id: g.id, tipo: "glossario", principal: g.termo, medio: g.sinonimos.join(" "), secundario: g.definicao, dados: g })),
+    ...conteudos.map((c) => ({ id: c.id, tipo: "conteudo", principal: c.titulo, medio: c.topicos, secundario: c.resumo, dados: c })),
+    ...interacoes.map((x) => ({ id: x.id, tipo: "interacao", principal: x.titulo, medio: x.exemplos.slice(0, 8).join(" "), secundario: x.resumo, dados: x })),
+  ], { sinonimos: setor.sinonimos });
   const fmt = (v) => money(v, agente);
   const vocab = catalogVocab(catalogo.itens);
   const itemById = (id) => catalogo.itens.find((p) => p.id === id);
@@ -93,7 +105,44 @@ export function createAgent(input) {
     return b && t ? { rotulo: `Buscar “${t}”`.slice(0, 60), href: b.modelo.replace("{termo}", encodeURIComponent(t)) } : null;
   };
 
+  const interactionById = (id) => interacoes.find((x) => x.id === id);
+  // Interação: para que serve, o que pedir e o botão que leva até a parte do site que faz aquilo.
+  const answerInteraction = (x) => ({
+    texto: `${x.resumo} Te levo até lá:`,
+    acoes: [
+      { rotulo: (/^https?:/i.test(x.link) ? x.titulo || "Abrir" : `Ir para ${x.titulo}`).slice(0, 60), href: x.link },
+      ...(x.requerLogin && consultas.login && consultas.login !== x.link ? [{ rotulo: "Entrar na conta", href: consultas.login }] : []),
+    ],
+    fonte: x.id,
+  });
+  // Conteúdo: introdução curta (resumo extraído do próprio texto) e o link para o original.
+  const answerContent = (c) => ({
+    texto: `Resumindo "${c.titulo}": ${c.resumo}${c.link ? " O texto completo está no link abaixo." : ""}`,
+    acoes: c.link ? [{ rotulo: "Ler o conteúdo completo", href: c.link }] : [],
+    fonte: c.id,
+  });
+  // Glossário do setor: definição geral; se o site fala do assunto, aponta para lá.
+  const answerGlossary = (g) => {
+    const related = index.search(`${g.termo} ${g.sinonimos.slice(0, 2).join(" ")}`, { limit: 6 }).find((h) => ["conteudo", "faq", "pagina", "interacao"].includes(h.doc.tipo) && h.hits >= 1 && h.ratio >= 0.4);
+    const link = related && (related.doc.dados.link || related.doc.dados.href);
+    return {
+      texto: `${g.termo}: ${g.definicao} (explicação geral${link ? `; veja como funciona em ${agente.site}` : ""}).`,
+      acoes: link ? [{ rotulo: (related.doc.dados.titulo || related.doc.dados.pergunta || "Ver no site").slice(0, 60), href: link }] : [],
+      fonte: g.id,
+    };
+  };
+  const answerDoc = (doc) =>
+    ({ faq: answerFaq, pagina: answerPage, glossario: answerGlossary, conteudo: answerContent, interacao: answerInteraction })[doc.tipo]?.(doc.dados) || answerPage(doc.dados);
+  // Rótulo curto para "Você quis dizer...?" a partir de uma intenção candidata.
+  const labelFor = (name) => {
+    if (name.startsWith("interacao__")) return interactionById(name.slice(11))?.titulo;
+    if (name.startsWith("fluxo__")) return flowById(name.slice(7))?.gatilhos[0];
+    if (name.startsWith("consulta__")) return consultas.dados.find((d) => d.id === name.slice(10))?.exemplos[0];
+    return intencoes[name]?.exemplos.find((e) => e.split(" ").length >= 2) || intencoes[name]?.exemplos[0];
+  };
+
   function answerIntent(name, turn) {
+    if (name.startsWith("interacao__")) return answerInteraction(interactionById(name.slice(11)));
     if (name.startsWith("fluxo__")) return askFlow(flowById(name.slice(7)));
     if (name.startsWith("consulta__")) return lookupFor(name.slice(10));
     const it = intencoes[name];
@@ -257,11 +306,29 @@ export function createAgent(input) {
       const s = searchLink(searchMatch[1]);
       if (s) return done({ texto: `Pesquisei para você: abra os resultados de “${searchMatch[1].trim()}” no site.`, acoes: [s] }, "busca", 0.8);
     }
+    // Versão 0.7: "o que é X?" responde com o glossário do setor (ou um conteúdo do site);
+    // "me explica X" / "como funciona X" responde com o resumo do conteúdo e o link.
+    // Resposta ao "Você quis dizer...?": nenhuma das opções → pede outras palavras e mostra a equipe.
+    if (/^(nenhuma|nenhum|nao) ?(dessas|desses|delas|deles|das opcoes)?$/.test(n) && contexto?.falhas)
+      return done({ texto: `Tudo bem. Me conta com outras palavras o que você procura${intencoes.contato ? `, ou fale direto com a equipe de ${agente.site}` : ""}.`, acoes: intencoes.contato?.acoes || [], sugestoes: defaultChips(), contexto: { falhas: contexto.falhas } }, "nenhuma_opcao", 1);
+    const define = n.match(DEFINE);
+    const explain = !define && n.match(EXPLAIN);
+    if (define || explain) {
+      const subject = (define || explain)[1];
+      const order = define ? ["glossario", "faq", "conteudo", "interacao"] : ["conteudo", "faq", "interacao", "glossario", "pagina"];
+      const found = index.search(subject, { limit: 8 }).filter((h) => order.includes(h.doc.tipo) && strong(h));
+      const pick = order.map((t) => found.find((h) => h.doc.tipo === t)).find(Boolean);
+      if (pick) return done(answerDoc(pick.doc), pick.doc.tipo, pick.ratio);
+    }
     const ranked = model ? classify(model, text) : [];
     const top = ranked[0];
     const confident = Boolean(top && top.p >= agente.limiar && top.coverage >= 0.5);
     const words = tokens(text).length;
-    const hits = index.search(text, { limit: 3 });
+    // O glossário do setor é conhecimento geral: só responde quando o próprio site não tem nada
+    // forte sobre o assunto (a FAQ "qual o prazo de entrega?" do site vence a definição geral).
+    const allHits = index.search(text, { limit: 6 });
+    const hits = allHits.filter((h) => h.doc.tipo !== "glossario").slice(0, 3);
+    const glossHit = allHits.find((h) => h.doc.tipo === "glossario" && strong(h));
     const best = hits.find((h) => h.doc.tipo !== "item");
     const asksCatalog = catalogo.itens.length && (CATALOG_WORDS.test(n) || extractPrice(text) != null || hits[0]?.doc.tipo === "item");
 
@@ -284,18 +351,29 @@ export function createAgent(input) {
       // melhor (traz telefone, WhatsApp...).
       if (confident && chosen.doc.tipo === "pagina" && intencoes[top.intent]?.acoes.some((a) => a.href === chosen.doc.dados.href))
         return done(answerIntent(top.intent, turn), top.intent, top.p);
-      return done(chosen.doc.tipo === "faq" ? answerFaq(chosen.doc.dados) : answerPage(chosen.doc.dados), chosen.doc.tipo, chosen.ratio);
+      // Página que é a porta de uma interação: a interação explica para que serve antes do link.
+      const viaInteraction = chosen.doc.tipo === "pagina" && !wantsPage && hits.find((h) => h.doc.tipo === "interacao" && h.doc.dados.link === chosen.doc.dados.href && weak(h));
+      const final = viaInteraction || chosen;
+      return done(answerDoc(final.doc), final.doc.tipo, final.ratio);
     }
     if (asksCatalog) {
       const r = answerCatalog(text);
       if (r) return done(r, "catalogo", hits[0]?.ratio || 0.5);
     }
     if (confident) return done(answerIntent(top.intent, turn), top.intent, top.p);
+    if (glossHit) return done(answerGlossary(glossHit.doc.dados), "glossario", glossHit.ratio);
     if (weak(best)) {
-      const r = best.doc.tipo === "faq" ? answerFaq(best.doc.dados) : answerPage(best.doc.dados);
+      const r = answerDoc(best.doc);
       return done({ ...r, texto: `Talvez isto ajude: ${r.texto}`, sugestoes: defaultChips() }, `${best.doc.tipo}-provavel`, best.ratio);
     }
-    return done({ texto: agente.naoEntendi, sugestoes: defaultChips(), acoes: intencoes.contato?.acoes || [] }, "nao_entendi", top?.p || 0);
+    // Versão 0.7: recuperação em etapas. 1ª falha: "Você quis dizer...?" com os candidatos mais
+    // próximos; 2ª seguida: oferece o atendimento humano (com os contatos), em vez de repetir.
+    const falhas = (Number.isInteger(contexto?.falhas) ? contexto.falhas : 0) + 1;
+    const guesses = [...new Set(ranked.filter((r) => r.p >= 0.2 && r.coverage >= 0.34).slice(0, 2).map((r) => labelFor(r.intent)).filter(Boolean))].map((g) => g.slice(0, 60));
+    if (falhas >= 2 && intencoes.contato)
+      return done({ texto: `Ainda não consegui entender, desculpe. Prefere falar com uma pessoa da equipe de ${agente.site}? Ou escreva de outro jeito, com outras palavras.`, acoes: intencoes.contato.acoes, sugestoes: guesses.length ? guesses : defaultChips(), contexto: { falhas } }, "nao_entendi", top?.p || 0);
+    if (guesses.length) return done({ texto: "Não tenho certeza se entendi. Você quis dizer:", sugestoes: [...guesses, "Nenhuma dessas"], contexto: { falhas } }, "voce_quis_dizer", top?.p || 0);
+    return done({ texto: agente.naoEntendi, sugestoes: defaultChips(), acoes: intencoes.contato?.acoes || [], contexto: { falhas } }, "nao_entendi", top?.p || 0);
   }
 
   return { reply, knowledge, problems, saudacao: () => ({ texto: agente.saudacao, sugestoes: defaultChips() }) };

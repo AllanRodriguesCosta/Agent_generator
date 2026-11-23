@@ -8,7 +8,7 @@ import { createAgent } from "./nucleo/agent.js";
 import { anonymize, isMiss } from "./nucleo/privacy.js";
 import { iaConfig, withIa } from "./nucleo/ia.js";
 
-const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes"];
+const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes"];
 
 export async function loadKnowledgeFromDisk(dir = new URL("./conhecimento/", import.meta.url)) {
   const raw = {};

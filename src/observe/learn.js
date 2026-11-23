@@ -262,6 +262,9 @@ export function observationText(obs, changes, { minutos } = {}) {
     "Ações que mudam dados (o agente NÃO executa; só indica a página):",
     ...(obs.acoes.length ? obs.acoes.slice(0, 15).map((a) => `- ${a.metodo} ${a.caminho}${a.campos.length ? ` (campos: ${a.campos.join(", ")})` : ""}`) : ["- nenhuma vista"]),
     "",
+    ...(changes.setor || changes.interacoes?.length
+      ? ["", "Setor e interações (0.7):", ...(changes.setor ? [`- setor da base: ${changes.setor}`] : []), ...(changes.interacoes || []).map((x) => `- interação nova: ${x}`)]
+      : []),
     "Dica: entre na sua conta durante a observação e abra páginas como Meus pedidos; assim o agente aprende a consultar a conta de quem estiver logado.",
   ];
   return `${lines.join("\n")}\n`;

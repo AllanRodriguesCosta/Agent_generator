@@ -73,5 +73,37 @@ export function parseMarkup(content) {
       /* JSON-LD inválido: ignora */
     }
   }
-  return { titulo, descricao, lang, faq: faq.filter((f) => f.pergunta && f.resposta && f.pergunta.length <= 300).slice(0, 200), headings, links, forms, buttons: [...new Set(buttons)].slice(0, 20), paragraphs: [...new Set(paragraphs)].slice(0, 40), texto: textOf(body).slice(0, 20000) };
+  // Versão 0.7: seções (título + texto até o próximo título) para os resumos de conteúdo.
+  const blocks = [];
+  const heads = [...body.matchAll(/<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/gi)];
+  for (const [i, h] of heads.entries()) {
+    const start = h.index + h[0].length;
+    const end = heads[i + 1]?.index ?? body.length;
+    const chunk = body.slice(start, end).replace(/<(nav|header|footer|form|aside|button|select)\b[\s\S]*?<\/\1>/gi, " ");
+    const texto = [...chunk.matchAll(/<(p|li|dd|blockquote|td)\b[^>]*>([\s\S]*?)<\/\1>/gi)].map((m) => textOf(m[2])).filter((t) => t.length >= 15).join(" ");
+    if (texto.length >= 80) blocks.push({ titulo: textOf(h[3]).slice(0, 120), texto: texto.slice(0, 3000), ancora: attr(h[2], "id") });
+  }
+  // Tipos e ações do schema.org (JSON-LD): ajudam a reconhecer o setor e as interações.
+  const schemaTypes = [];
+  const potentialActions = [];
+  const walk = (node, depth = 0) => {
+    if (!node || typeof node !== "object" || depth > 6) return;
+    if (Array.isArray(node)) return node.forEach((n) => walk(n, depth + 1));
+    for (const t of [].concat(node["@type"] || [])) if (typeof t === "string" && schemaTypes.length < 30) schemaTypes.push(t);
+    for (const a of [].concat(node.potentialAction || []))
+      if (a && typeof a["@type"] === "string") {
+        const target = [].concat(a.target || [])[0];
+        const alvo = typeof target === "string" ? target : typeof target?.urlTemplate === "string" ? target.urlTemplate : "";
+        potentialActions.push({ tipo: a["@type"], alvo: alvo.slice(0, 300) });
+      }
+    for (const [key, value] of Object.entries(node)) if (key !== "potentialAction" && typeof value === "object") walk(value, depth + 1);
+  };
+  for (const m of src.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      walk(JSON.parse(m[1]));
+    } catch {
+      /* JSON-LD inválido: ignora */
+    }
+  }
+  return { blocks: blocks.slice(0, 30), schemaTypes: [...new Set(schemaTypes)], potentialActions: potentialActions.filter((a, i) => potentialActions.findIndex((b) => b.tipo === a.tipo && b.alvo === a.alvo) === i).slice(0, 10), titulo, descricao, lang, faq: faq.filter((f) => f.pergunta && f.resposta && f.pergunta.length <= 300).slice(0, 200), headings, links, forms, buttons: [...new Set(buttons)].slice(0, 20), paragraphs: [...new Set(paragraphs)].slice(0, 40), texto: textOf(body).slice(0, 20000) };
 }

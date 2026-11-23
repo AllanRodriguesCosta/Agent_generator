@@ -1,6 +1,6 @@
 # Formato da base de conhecimento (versão 1)
 
-Oito arquivos JSON (o último, `acoes.json`, desde a 0.7) em `agente/conhecimento/`. Todos são opcionais; o que faltar vira padrão. Ao
+Onze arquivos JSON (`fluxos.json` e `consultas.json` desde a 0.3; `acoes.json` com as capacidades aprovadas; `setor.json`, `conteudos.json` e `interacoes.json` desde a 0.7) em `agente/conhecimento/`. Todos são opcionais; o que faltar vira padrão. Ao
 carregar, o agente confere tudo: corta textos longos, descarta links perigosos (`javascript:`,
 `data:`) e ignora entradas incompletas (o comando `avaliar` lista o que foi ignorado).
 
@@ -190,3 +190,12 @@ Nada novo para escrever: o agente tira do próprio `catalogo.json`
 Assim funcionam "tem tênis preto da Nike até 300?", "e em azul?", "o mais barato",
 "compara os dois" e "me fala do segundo". Cor que nenhum item tem recebe "Não encontrei... Tenho em:
 preto, branco".
+
+## setor.json, conteudos.json e interacoes.json (0.7)
+
+Gerados pelo raio X (e refinados pela observação): setor do site com glossário e sinônimos em
+português e inglês, resumos das seções informativas com link e o mapa do que dá para fazer no
+site. Formato, regras e exemplos: [DOMINIO-CONTEUDO-INTERACOES.md](DOMINIO-CONTEUDO-INTERACOES.md).
+Ao carregar, o agente confere: glossário sem termo ou definição, conteúdo sem resumo e interação
+sem link são ignorados; links perigosos são descartados. Bases antigas continuam funcionando:
+`gerar` sem `--forcar` só escreve os arquivos que ainda não existem.

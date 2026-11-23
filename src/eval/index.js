@@ -61,6 +61,18 @@ export function evaluateKnowledge(input, { extra = [], variacoes = false } = {})
     if (got === espera || r.intencao === espera) result.frases.certas++;
     else result.frases.erros.push({ frase, esperado: espera, obtido: got });
   }
+  // Versão 0.7: domínio. "o que é <termo>" acha o glossário (ou algo do próprio site sobre o
+  // termo), "me explica <título>" acha o conteúdo e as frases de cada interação levam até ela.
+  result.dominio = { total: 0, certas: 0, erros: [] };
+  const domainCheck = (frase, ok, esperado) => {
+    const r = agent.reply(frase);
+    result.dominio.total++;
+    if (ok(r)) result.dominio.certas++;
+    else result.dominio.erros.push({ frase, esperado, obtido: r.fonte || r.intencao });
+  };
+  for (const g of knowledge.setor.glossario.slice(0, 40)) domainCheck(`o que é ${g.termo}?`, (r) => r.fonte === g.id || ["faq", "conteudo"].includes(r.intencao), `glossario:${g.id}`);
+  for (const c of knowledge.conteudos.slice(0, 40)) domainCheck(`me explica sobre ${c.titulo}`, (r) => r.fonte === c.id || (r.intencao === "faq" && c.link && r.acoes.some((a) => a.href === c.link)), `conteudo:${c.id}`);
+  for (const x of knowledge.interacoes) for (const e of x.exemplos.slice(0, 3)) domainCheck(e, (r) => r.fonte === x.id || r.acoes.some((a) => a.href === x.link), `interacao:${x.id}`);
   // Versão 0.5: variações geradas (sem acento, erro de digitação, informal). Indicativo: não entra
   // no acerto geral, mas mostra o quanto o agente aguenta frases "do mundo real".
   if (variacoes) {
@@ -76,7 +88,7 @@ export function evaluateKnowledge(input, { extra = [], variacoes = false } = {})
   }
   result.cobertura = coverage(knowledge);
   const pct = (x) => (x.total ? Math.round((x.certas / x.total) * 1000) / 10 : null);
-  const parts = ["treino", "intencoes", "faq", "paginas", "frases", "variacoes"].filter((k) => result[k]?.total);
+  const parts = ["treino", "intencoes", "faq", "paginas", "dominio", "frases", "variacoes"].filter((k) => result[k]?.total);
   // Geral: treino, perguntas, páginas e frases do projeto. Generalização e variações são indicativas.
   const scored = parts.filter((k) => k !== "intencoes" && k !== "variacoes");
   const total = scored.reduce((s, k) => s + result[k].total, 0);
@@ -86,7 +98,7 @@ export function evaluateKnowledge(input, { extra = [], variacoes = false } = {})
 
 export function evaluationText(r) {
   const lines = [`Acerto geral: ${r.geral ?? "-"}%`];
-  const labels = { treino: "Intenções (exemplos da base)", intencoes: "Generalização (cada exemplo fora do treino; indicativo)", faq: "Perguntas frequentes", paginas: "Páginas", frases: "Frases do projeto", variacoes: "Variações geradas (sem acento, erro de digitação, informal; indicativo)" };
+  const labels = { treino: "Intenções (exemplos da base)", intencoes: "Generalização (cada exemplo fora do treino; indicativo)", faq: "Perguntas frequentes", paginas: "Páginas", dominio: "Glossário do setor, conteúdos e interações (0.7)", frases: "Frases do projeto", variacoes: "Variações geradas (sem acento, erro de digitação, informal; indicativo)" };
   for (const [k, v] of Object.entries(r.porcentagens)) {
     lines.push(`- ${labels[k]}: ${v}% (${r[k].certas}/${r[k].total})`);
     for (const e of r[k].erros.slice(0, 8)) lines.push(`    errou: "${e.frase}" → esperado ${e.esperado}, veio ${e.obtido}`);

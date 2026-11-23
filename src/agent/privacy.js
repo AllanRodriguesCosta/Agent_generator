@@ -15,4 +15,4 @@ export function anonymize(text) {
     .slice(0, 200);
 }
 // Respostas que contam como "não entendi" (inclui o palpite fraco "talvez isto ajude").
-export const isMiss = (r) => r && (r.intencao === "nao_entendi" || /-provavel$/.test(r.intencao || "") || r.intencao === "mais_sem_contexto");
+export const isMiss = (r) => r && (r.intencao === "nao_entendi" || r.intencao === "voce_quis_dizer" || /-provavel$/.test(r.intencao || "") || r.intencao === "mais_sem_contexto");

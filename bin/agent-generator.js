@@ -23,6 +23,8 @@ import { readMissFiles, groupMisses, suggestFor, learnText, correctionFor } from
 import { startEditor } from "../src/editor/server.js";
 import { buildFromSite } from "../src/site/index.js";
 import { USER_AGENT } from "../src/crawler/index.js";
+import { buildDomain, enrichFromObservation, sectorKnowledge, SECTOR_IDS } from "../src/domain/index.js";
+import { detectSector, textsFromReport } from "../src/domain/detect.js";
 
 const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", auto: "assistente", wizard: "assistente", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
 const WORK = "agente-gerador";
@@ -34,7 +36,7 @@ export function parseArgs(argv) {
     if (a.startsWith("--")) {
       const [k, v] = a.slice(2).split("=");
       if (v !== undefined) out.flags[k] = v;
-      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos", "arquivo", "max-paginas", "pausa"].includes(k)) out.flags[k] = argv[++i];
+      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos", "arquivo", "max-paginas", "pausa", "setor"].includes(k)) out.flags[k] = argv[++i];
       else out.flags[k] = true;
     } else out._.push(a);
   }
@@ -75,11 +77,15 @@ Comandos:
                            pequeno para publicar à parte. O site só ganha duas linhas (widget).
                            IA opcional (Gemini, OpenAI ou Ollama local) só reescreve o que o
                            agente não entendeu. Pasta padrão: ./agente-<domínio>.
+  setor [pasta]            Mostra o setor detectado (base comum: glossário e sinônimos em
+                           português e inglês) e o ranking com as evidências. Com --setor <id>,
+                           troca o setor da base. Setores: ${SECTOR_IDS.join(", ")}.
   ajuda                    Esta mensagem
 
 Opções:
   --destino <pasta>   Onde instalar o agente (padrão: detectado, ex.: public/agente)
   --inserir           Insere a linha do widget nos HTML de entrada (index.html...)
+  --setor <id>        (gerar/criar/setor/site) Usa esse setor em vez do detectado ("geral" = nenhum)
   --forcar            Regera a base mesmo se já existir (a anterior vai para agente-gerador/backup)
   --json              Saída em JSON (para IAs de código e scripts)
   --frases <arquivo>  Avaliar também frases próprias: [{"frase": "...", "espera": "faq:id"}]
@@ -161,7 +167,7 @@ async function backup(ctx, dir) {
 async function cmdGerar(ctx) {
   const report = await loadReport(ctx);
   const t = await target(ctx, report.projeto.stack);
-  const { knowledge, notes } = generateKnowledge(report);
+  const { knowledge, notes } = generateKnowledge(report, { setor: chosenSector(ctx) });
   const bkp = ctx.flags.forcar ? await backup(ctx, t.dir) : null;
   const { written, kept } = await writeKnowledge(t.dir, knowledge, { force: Boolean(ctx.flags.forcar) });
   await saveConfig(ctx, { destino: relative(ctx.project, t.dir).split(sep).join("/"), publicPath: t.publicPath });
@@ -173,7 +179,7 @@ async function cmdInstalar(ctx, { report } = {}) {
   const r = report || (await loadReport(ctx));
   const t = await target(ctx, r.projeto.stack);
   const existing = await readKnowledge(t.dir);
-  const knowledge = Object.keys(existing).length ? null : generateKnowledge(r).knowledge;
+  const knowledge = Object.keys(existing).length ? null : generateKnowledge(r, { setor: chosenSector(ctx) }).knowledge;
   const result = await install(ctx.project, knowledge, { target: t, stack: r.projeto.stack });
   await saveConfig(ctx, { destino: relative(ctx.project, t.dir).split(sep).join("/"), publicPath: t.publicPath });
   const injected = ctx.flags.inserir ? await injectTags(ctx.project, t.publicPath) : null;
@@ -186,6 +192,37 @@ async function currentKnowledge(ctx) {
   const raw = await readKnowledge(t.dir);
   if (!Object.keys(raw).length) throw new Error(`Base não encontrada em ${t.dir}. Rode antes: agent-generator criar ${ctx.project}`);
   return { raw, target: t, report };
+}
+
+// Setor escolhido à mão (--setor ou o que ficou salvo em agente-gerador/config.json).
+function chosenSector(ctx) {
+  const id = typeof ctx.flags.setor === "string" ? ctx.flags.setor : ctx.config?.setor;
+  if (id && !SECTOR_IDS.includes(id)) throw new Error(`Setor desconhecido: ${id}. Use um destes: ${SECTOR_IDS.join(", ")}.`);
+  return id || undefined;
+}
+
+// Versão 0.7: setor detectado, ranking com evidências e troca manual (--setor).
+async function cmdSetor(ctx) {
+  const report = await loadReport(ctx);
+  const detection = detectSector(textsFromReport(report));
+  const forced = typeof ctx.flags.setor === "string" ? chosenSector(ctx) : null;
+  let applied = null;
+  if (forced) {
+    const t = await target(ctx, report.projeto.stack);
+    const setor = sectorKnowledge(detectSector(textsFromReport(report), { forcar: forced }));
+    const raw = await readKnowledge(t.dir);
+    const bkp = Object.keys(raw).length ? await backup(ctx, t.dir) : null;
+    await writeKnowledge(t.dir, { setor }, { force: true });
+    await saveConfig(ctx, { setor: forced });
+    applied = { setor: setor.id, glossario: setor.glossario.length, backup: bkp };
+  }
+  const lines = [
+    `Setor detectado: ${detection.setor}${detection.secundario ? ` + ${detection.secundario}` : ""} (confiança ${Math.round(detection.confianca * 100)}%).`,
+    "Ranking (pontos e principais sinais):",
+    ...detection.ranking.slice(0, 6).map((r) => `  ${r.id.padEnd(12)} ${String(r.pontos).padStart(6)}  ${r.evidencias.slice(0, 4).join(", ") || "-"}`),
+    applied ? `\nBase atualizada: setor "${applied.setor}" com ${applied.glossario} termos no glossário (conhecimento/setor.json).` : `\nPara trocar: agent-generator setor ${ctx.project} --setor <id>  (${SECTOR_IDS.join(", ")})`,
+  ];
+  return { detection: { setor: detection.setor, secundario: detection.secundario, confianca: detection.confianca, ranking: detection.ranking.slice(0, 6) }, applied, texto: lines.join("\n") };
 }
 
 async function cmdAvaliar(ctx) {
@@ -311,7 +348,12 @@ async function learnFrom(ctx, session, minutos) {
   const obs = summarize(session);
   const { raw, target: t } = await currentKnowledge(ctx);
   const antes = evaluateKnowledge(raw).geral;
-  const { knowledge, changes } = applyObservation(raw, obs);
+  const applied = applyObservation(raw, obs);
+  // Versão 0.7: com o site rodando, o setor é conferido de novo e os formulários usados viram
+  // interações (o que dá para fazer no site e onde).
+  const enriched = enrichFromObservation(applied.knowledge, obs);
+  const knowledge = enriched.knowledge;
+  const changes = { ...applied.changes, setor: enriched.changes.setor, interacoes: enriched.changes.interacoes };
   const bkp = await backup(ctx, t.dir);
   await writeKnowledge(t.dir, knowledge, { force: true });
   const geral = evaluateKnowledge(knowledge).geral;
@@ -566,6 +608,7 @@ async function cmdSite(url, folder, flags) {
   if (!flags.json) console.log(`Lendo ${origin.origin} (páginas públicas, respeitando o robots.txt)...`);
   try {
     const r = await buildFromSite(origin.href, out, {
+      setor: typeof flags.setor === "string" && SECTOR_IDS.includes(flags.setor) ? flags.setor : undefined,
       maxPages: Number(flags["max-paginas"]) || 60,
       delayMs: flags.pausa != null ? Math.max(0, Number(flags.pausa) || 0) : 400,
       render,
@@ -650,6 +693,11 @@ export async function main(argv = process.argv.slice(2)) {
         return 0;
       }
       return null;
+    }
+    case "setor": {
+      const r = await cmdSetor(ctx);
+      print(ctx, { detectado: r.detection, aplicado: r.applied }, r.texto);
+      return 0;
     }
     case "analisar": {
       const { report, arquivo } = await cmdAnalisar(ctx);

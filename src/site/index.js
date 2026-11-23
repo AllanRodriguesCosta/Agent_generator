@@ -110,7 +110,7 @@ qualquer servidor com Node 20.
   };
 }
 
-export async function buildFromSite(url, outDir, { maxPages = 60, delayMs = 400, render, fetchImpl = fetch, log = () => {}, force = false, soConteudo = false } = {}) {
+export async function buildFromSite(url, outDir, { maxPages = 60, delayMs = 400, render, fetchImpl = fetch, log = () => {}, force = false, soConteudo = false, setor } = {}) {
   const out = resolve(outDir);
   await mkdir(out, { recursive: true });
   const crawl = await crawlSite(url, { maxPages, delayMs, render, fetchImpl, log });
@@ -142,7 +142,7 @@ export async function buildFromSite(url, outDir, { maxPages = 60, delayMs = 400,
   if (crawl.products.length) report.avisos = report.avisos.filter((a) => !/^(Sem|Nenhum) catálogo/.test(a));
   await writeFile(join(work, "relatorio.json"), json(report));
 
-  const { knowledge, notes } = generateKnowledge(report);
+  const { knowledge, notes } = generateKnowledge(report, { setor });
   if (crawl.catalogApi) knowledge.catalogo = { ...knowledge.catalogo, url: crawl.catalogApi };
   knowledge.agente = { ...knowledge.agente, endpoint: "../api/agente" };
 

@@ -8,7 +8,7 @@ import { mapItems } from "./nucleo/catalog-map.js";
 import { describeLookup, lookupHeaders } from "./nucleo/lookup.js";
 import { anonymize, isMiss } from "./nucleo/privacy.js";
 
-const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes"];
+const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes"];
 const STORE = "agente_widget_v1";
 const MAX_HISTORY = 30;
 const MISSES = "agente_faltas_v1";

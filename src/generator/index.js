@@ -4,6 +4,7 @@
 import { checkKnowledge } from "../agent/knowledge.js";
 import { normalize } from "../agent/text.js";
 import { candidatesFromReport } from "../capabilities/glossary.js";
+import { buildDomain } from "../domain/index.js";
 
 const uniq = (a) => [...new Set(a.filter(Boolean))];
 const has = (re, ...values) => values.some((v) => re.test(normalize(v)));
@@ -78,7 +79,21 @@ export function baseIntents({ site, contactText, contactPage, whatsapp, helpPage
   return intents;
 }
 
-export function generateKnowledge(report) {
+// Junta as interações que já têm intenção própria (contato, conta, ajuda) aos botões dessa
+// intenção, e tira dos exemplos da interação as frases que já pertencem a outra intenção.
+export function linkInteractions(intencoes, interacoes) {
+  const owner = { contato: "contato", login: "conta", cadastro: "conta", suporte: "ajuda" };
+  const taken = new Set(Object.values(intencoes).flatMap((i) => i.exemplos.map(normalize)));
+  for (const x of interacoes) {
+    const target = intencoes[owner[x.tipo]];
+    if (target && x.link && !target.acoes.some((a) => a.href === x.link) && target.acoes.length < 4)
+      target.acoes.push({ rotulo: (x.titulo || "Abrir").slice(0, 60), href: x.link });
+    x.exemplos = x.exemplos.filter((e) => !taken.has(normalize(e)));
+  }
+  return { intencoes, interacoes };
+}
+
+export function generateKnowledge(report, { setor: forcarSetor } = {}) {
   const site = report.projeto?.site || report.projeto?.nome || "o site";
   const pagesRaw = report.paginas || [];
   const links = report.links || [];
@@ -169,9 +184,23 @@ export function generateKnowledge(report) {
   // Consultas: o login vem do raio X; buscas e dados da conta são confirmados pela observação
   // (comando observar), que vê as chamadas reais do site.
   const consultas = { login: loginPage, buscas: [], dados: [] };
-  const { knowledge, problems } = checkKnowledge({ agente, intencoes, faq, paginas, catalogo, fluxos: [], consultas, acoes });
+  // Versão 0.7: base setorial, conteúdos resumidos e mapa de interações.
+  const domain = buildDomain(report, { setor: forcarSetor });
+  linkInteractions(intencoes, domain.interacoes);
+  if (domain.interacoes.length) {
+    const tipos = domain.interacoes.slice(0, 3).map((x) => x.titulo);
+    agente.saudacao = `${agente.saudacao} Também explico como funciona ${tipos.map((t) => `"${t}"`).join(", ")}.`.slice(0, 600);
+  }
+  const { knowledge, problems } = checkKnowledge({ agente, intencoes, faq, paginas, catalogo, fluxos: [], consultas, acoes, ...domain });
   knowledge.agente.origem = agente.origem;
   const notes = [...(report.avisos || []), ...problems];
   if (!contactPage && !contactParts.length) notes.push("Sem contato encontrado: edite intencoes.json > contato > respostas.");
-  return { knowledge, notes };
+  const s = domain.setor;
+  notes.push(
+    s.id === "geral"
+      ? `Setor: nenhum se destacou (${s.ranking.slice(0, 2).map((r) => `${r.nome} ${r.pontos}`).join(", ")}). Escolha com --setor <id> ou pela observação.`
+      : `Setor: ${s.nome}${s.secundario ? ` + ${s.secundario}` : ""} (${Math.round(s.confianca * 100)}%${s.forcado ? ", escolhido à mão" : ""}; sinais: ${s.ranking[0]?.evidencias.slice(0, 3).join(", ")}). Glossário com ${s.glossario.length} termos.`,
+  );
+  notes.push(`Conteúdos resumidos: ${knowledge.conteudos.length}. Interações mapeadas: ${knowledge.interacoes.map((x) => x.tipo).join(", ") || "nenhuma"}.`);
+  return { knowledge, notes, domain };
 }
