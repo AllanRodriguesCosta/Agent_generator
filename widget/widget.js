@@ -7,12 +7,49 @@ import { createAgent } from "./nucleo/agent.js";
 import { mapItems } from "./nucleo/catalog-map.js";
 import { describeLookup, lookupHeaders } from "./nucleo/lookup.js";
 import { anonymize, isMiss } from "./nucleo/privacy.js";
+import { sanitizeUser } from "./nucleo/context.js";
 
-const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes"];
+const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes", "midias", "perfil"];
 const STORE = "agente_widget_v1";
 const MAX_HISTORY = 30;
 const MISSES = "agente_faltas_v1";
 const MISS_DAYS = 90;
+// Versão 0.8: dados da pessoa logada, só nesta aba (sessionStorage) e por pouco tempo.
+const USER = "agente_usuario_v1";
+
+// Dados do usuário: o site entrega (identificar(), window.AGENTE_USUARIO ou
+// <script type="application/json" id="agente-usuario">) ou o widget lê perfil.fonte com a sessão
+// do próprio site. Nada vai para localStorage, para a IA opcional ou para o registro de faltas.
+export function readCachedUser(now = Date.now()) {
+  try {
+    const c = JSON.parse(globalThis.sessionStorage.getItem(USER) || "null");
+    return c && c.ate > now && c.dados && typeof c.dados === "object" ? c.dados : null;
+  } catch {
+    return null;
+  }
+}
+export function cacheUser(dados, minutos = 15, now = Date.now()) {
+  const clean = sanitizeUser(dados);
+  try {
+    if (clean) globalThis.sessionStorage.setItem(USER, JSON.stringify({ dados: clean, ate: now + minutos * 60000 }));
+    else globalThis.sessionStorage.removeItem(USER);
+  } catch {
+    /* sem armazenamento: vale só enquanto a página estiver aberta */
+  }
+  return clean;
+}
+function userFromPage() {
+  if (globalThis.AGENTE_USUARIO && typeof globalThis.AGENTE_USUARIO === "object") return globalThis.AGENTE_USUARIO;
+  const tag = globalThis.document?.getElementById("agente-usuario");
+  if (tag?.type === "application/json") {
+    try {
+      return JSON.parse(tag.textContent || "null");
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 // Versão 0.4: frases não entendidas, sem dado pessoal, neste navegador (até 100, por 90 dias).
 export function readMisses(now = Date.now()) {
@@ -50,6 +87,24 @@ export function listFrom(data) {
   for (const key of ["data", "items", "itens", "produtos", "products", "results", "resultados", "rows"]) if (Array.isArray(data?.[key])) return data[key];
   if (data && typeof data === "object") for (const v of Object.values(data)) if (Array.isArray(v)) return v;
   return [];
+}
+
+// Versão 0.8: passagem para uma pessoa com resumo. O link do WhatsApp já vai com as últimas
+// perguntas da conversa, para ninguém precisar repetir tudo (a pessoa ainda revisa e envia).
+const WHATSAPP = /^https:\/\/(wa\.me|api\.whatsapp\.com)\//i;
+export function handoffText(mensagens = [], site = "o site") {
+  const asked = mensagens.filter((m) => m.de === "voce").map((m) => String(m.texto).slice(0, 140)).slice(-3);
+  return `Olá! Vim pelo assistente de ${site}.${asked.length ? ` Minhas dúvidas: ${asked.map((t) => `"${t}"`).join("; ")}.` : ""}`.slice(0, 600);
+}
+export function withHandoff(href, mensagens, site) {
+  if (!WHATSAPP.test(href || "")) return href;
+  try {
+    const u = new URL(href);
+    if (!u.searchParams.get("text")) u.searchParams.set("text", handoffText(mensagens, site));
+    return u.href;
+  } catch {
+    return href;
+  }
 }
 
 export async function loadKnowledge(base, fetchImpl = fetch) {
@@ -111,6 +166,21 @@ export async function mount(options = {}) {
   // modo serviço (agente hospedado à parte, ao lado de um site já publicado).
   const endpoint = agente.endpoint && agente.endpoint.startsWith(".") ? new URL(agente.endpoint, base).href : agente.endpoint;
   const state = load();
+  const perfilCfg = agent.knowledge.perfil;
+  let usuario = sanitizeUser(userFromPage()) || readCachedUser();
+  // Lê perfil.fonte (caminho do próprio site) com o cookie da sessão; 401/403 = não logado.
+  async function ensureUser() {
+    if (usuario || !perfilCfg.ativo || !perfilCfg.fonte) return usuario;
+    try {
+      const res = await fetch(new URL(perfilCfg.fonte, location.href), { credentials: "same-origin", headers: { accept: "application/json", ...lookupHeaders(agent.knowledge.consultas.auth) } });
+      if (res.ok) usuario = cacheUser(await res.json(), perfilCfg.validadeMin);
+    } catch {
+      /* sem dados: o agente pede login */
+    }
+    return usuario;
+  }
+  const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
   const root = el("div", { class: `agw-root agw-${agente.posicao}` });
   root.style.setProperty("--agw-cor", agente.cor);
@@ -159,11 +229,26 @@ export async function mount(options = {}) {
       }
       item.append(list);
     }
+    if (msg.imagens?.length) {
+      const box = el("div", { class: "agw-photos" });
+      for (const im of msg.imagens.slice(0, 4)) {
+        const fig = el("figure", { class: "agw-photo" });
+        const a = el("a", { href: safeHref(im.src), target: "_blank", rel: "noopener noreferrer", "aria-label": `Abrir a foto: ${im.legenda || "foto"}` });
+        a.append(el("img", { src: safeHref(im.src), alt: im.legenda || "", loading: "lazy" }));
+        fig.append(a);
+        if (im.legenda) fig.append(el("figcaption", {}, im.legenda));
+        box.append(fig);
+      }
+      item.append(box);
+    }
     if (msg.acoes?.length) {
       const actions = el("div", { class: "agw-actions" });
       for (const a of msg.acoes) {
         const external = /^https?:\/\//i.test(a.href) && !a.href.startsWith(location.origin);
-        actions.append(el("a", { class: "agw-action", href: safeHref(a.href), ...(external ? { target: "_blank", rel: "noopener noreferrer" } : {}) }, a.rotulo));
+        const link = el("a", { class: "agw-action", href: safeHref(a.href), ...(external ? { target: "_blank", rel: "noopener noreferrer" } : {}) }, a.rotulo);
+        // WhatsApp: o resumo é montado na hora do clique (com a conversa até ali).
+        if (WHATSAPP.test(a.href)) link.addEventListener("click", () => link.setAttribute("href", safeHref(withHandoff(a.href, state.mensagens, agente.site))));
+        actions.append(link);
       }
       item.append(actions);
     }
@@ -173,7 +258,7 @@ export async function mount(options = {}) {
   function render() {
     log.replaceChildren();
     if (!state.mensagens.length) {
-      const hello = agent.saudacao();
+      const hello = agent.saudacao(usuario);
       state.mensagens.push({ de: "bot", texto: hello.texto });
       renderChips(hello.sugestoes);
     }
@@ -181,7 +266,9 @@ export async function mount(options = {}) {
     log.scrollTop = log.scrollHeight;
   }
   async function answer(text) {
-    if (!endpoint) return agent.reply(text, state.contexto);
+    // Modo navegador: os dados do usuário ficam aqui mesmo. Modo servidor: o servidor nunca recebe
+    // os dados; o widget completa as respostas de perfil localmente (abaixo).
+    if (!endpoint) return agent.reply(text, state.contexto, { usuario });
     const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mensagem: text, contexto: state.contexto }) });
     if (!res.ok) throw new Error(String(res.status));
     return res.json();
@@ -194,11 +281,29 @@ export async function mount(options = {}) {
     bubble(user);
     input.value = "";
     let r;
+    const typing = el("div", { class: "agw-msg agw-bot agw-typing", "aria-label": `${agente.nome} está digitando` });
+    typing.append(el("span"), el("span"), el("span"));
+    log.append(typing);
+    log.scrollTop = log.scrollHeight;
+    const started = Date.now();
     try {
       r = await answer(clean);
     } catch {
       r = { texto: "Não consegui responder agora. Tente de novo em instantes.", sugestoes: [] };
     }
+    // Versão 0.8: pergunta sobre os próprios dados (perfil): busca os dados do site e completa.
+    if (r.perfil?.id && (endpoint || !usuario)) {
+      const dados = await ensureUser();
+      if (dados) {
+        const filled = agent.perfil(r.perfil.id, dados);
+        if (filled) r = { ...r, ...filled, contexto: { ...(r.contexto || {}), ...(filled.contexto || {}) } };
+      }
+    }
+    // Digitação: um pouco de espera proporcional ao tamanho (até 1,2 s), sem animação se a
+    // pessoa pediu menos movimento.
+    const pause = reducedMotion ? 0 : Math.min(1200, (agente.digitacao || 0) * String(r.texto || "").length) - (Date.now() - started);
+    if (pause > 0) await wait(pause);
+    typing.remove();
     // Consulta da conta (pedidos, agendamentos...): lê a API do próprio site com a sessão de quem
     // está logado e resume. Só caminhos do próprio site (a base já recusa outros domínios).
     if (r.consulta?.url) {
@@ -218,7 +323,7 @@ export async function mount(options = {}) {
       if (texto && agente.registro && !endpoint)
         fetch(agente.registro, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mensagem: texto, falta: true }) }).catch(() => {});
     }
-    const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [], intencao: r.intencao || "", ...(typeof r.interpretado === "string" ? { interpretado: r.interpretado.slice(0, 160) } : {}) };
+    const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [], imagens: (r.imagens || []).slice(0, 4), intencao: r.intencao || "", ...(typeof r.interpretado === "string" ? { interpretado: r.interpretado.slice(0, 160) } : {}) };
     state.mensagens.push(bot);
     state.contexto = r.contexto || {};
     bubble(bot);
@@ -267,7 +372,19 @@ export async function mount(options = {}) {
     a.click();
     a.remove();
   };
-  return { ask, open: () => setOpen(true), close: () => setOpen(false), agent, faltas: () => readMisses(), exportarFaltas: exportMisses };
+  // Versão 0.8: o site informa quem está logado (depois do login) e limpa ao sair.
+  const identificar = (dados) => {
+    usuario = cacheUser(dados, perfilCfg.validadeMin);
+    return Boolean(usuario);
+  };
+  const sair = () => {
+    usuario = null;
+    cacheUser(null);
+  };
+  document.addEventListener("agente:identificar", (e) => identificar(e.detail));
+  document.addEventListener("agente:sair", sair);
+  if (perfilCfg.ativo && perfilCfg.fonte && !usuario) ensureUser();
+  return { ask, open: () => setOpen(true), close: () => setOpen(false), agent, faltas: () => readMisses(), exportarFaltas: exportMisses, identificar, sair };
 }
 
 if (typeof document !== "undefined" && !globalThis.AGENTE_CONFIG?.manual) {

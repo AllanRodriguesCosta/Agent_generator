@@ -34,7 +34,9 @@ function distance(a, b) {
 
 // documentos: [{ id, tipo, principal, medio, secundario, dados }]. Peso: principal (título,
 // pergunta, nome) 1; medio (termos, sinônimos) 0,7; secundario (descrição, resposta) 0,3.
-export function createIndex(documents) {
+// sinonimos (0.7): grupos de palavras equivalentes (ex.: ["frete", "entrega", "shipping"]) vindos
+// da base setorial; uma palavra da frase também procura as outras do grupo.
+export function createIndex(documents, { sinonimos = [] } = {}) {
   const index = documents.map((doc) => {
     const main = new Set(terms(doc.principal));
     const mid = new Set(terms(doc.medio || "").filter((t) => !main.has(t)));
@@ -46,7 +48,18 @@ export function createIndex(documents) {
   const mainVocabulary = new Set(index.flatMap((i) => [...i.main, ...i.mid]));
   // Variantes de cada palavra da frase. Fora dos títulos/perguntas: a mais próxima por digitação
   // (1 letra; 2 nas longas) ou as que começam igual ("pag" → "pagament").
-  const variants = (s) => {
+  const synonyms = new Map();
+  for (const group of sinonimos) {
+    const stems = [...new Set(group.flatMap((w) => terms(w)))];
+    for (const st of stems) synonyms.set(st, new Set([...(synonyms.get(st) || []), ...stems.filter((x) => x !== st)]));
+  }
+  const expand = (list) => {
+    const out = new Set(list);
+    for (const v of list) for (const x of synonyms.get(v) || []) if (df.has(x)) out.add(x);
+    return [...out];
+  };
+  const variants = (s) => expand(baseVariants(s));
+  const baseVariants = (s) => {
     if (mainVocabulary.has(s) || s.length < 3 || /\d/.test(s)) return [s];
     const out = df.has(s) ? [s] : [];
     let best = null;
@@ -66,7 +79,11 @@ export function createIndex(documents) {
   // Resultados do melhor para o pior. hits = palavras da frase achadas no texto principal;
   // ratio = parte do peso da frase que o documento cobre (0 a 1).
   function search(text, { tipo, limit = 5 } = {}) {
-    const query = [...new Set(terms(text))].map(variants);
+    const words = [...new Set(terms(text))];
+    const query = words.map(variants);
+    // Sinônimo vale menos que a palavra escrita (0,6): "shipping" acha "frete", mas um texto que
+    // tenha a própria palavra fica na frente.
+    const own = words.map((w) => new Set(baseVariants(w)));
     if (!query.length) return [];
     // Palavra que não existe em lugar nenhum da base pesa pouco (1): não acha nada, mas indica
     // que a frase fala de algo a mais do que o documento cobre.
@@ -77,21 +94,21 @@ export function createIndex(documents) {
       if (tipo && item.doc.tipo !== tipo) continue;
       let score = 0;
       let hits = 0;
-      for (const vs of query) {
-        const main = vs.filter((v) => item.main.has(v));
-        if (main.length) {
-          score += Math.min(weight(vs), Math.max(...main.map(idf)));
-          hits++;
-          continue;
-        }
-        const mid = vs.filter((v) => item.mid.has(v));
-        if (mid.length) {
-          score += 0.7 * Math.min(weight(vs), Math.max(...mid.map(idf)));
-          hits++;
-          continue;
-        }
-        const extra = vs.filter((v) => item.extra.has(v));
-        if (extra.length) score += 0.3 * Math.min(weight(vs), Math.max(...extra.map(idf)));
+      for (const [qi, vs] of query.entries()) {
+        // Melhor entre título (1), termos (0,7) e texto (0,3); palavra escrita vale mais que
+        // sinônimo, então "shipping" nos termos vence "frete" (sinônimo) no título.
+        const part = (set, w) => {
+          const found = vs.filter((v) => set.has(v));
+          if (!found.length) return 0;
+          const exact = found.filter((v) => own[qi].has(v));
+          const pick = exact.length ? exact : found;
+          return w * (exact.length ? 1 : 0.6) * Math.min(weight(vs), Math.max(...pick.map(idf)));
+        };
+        const main = part(item.main, 1);
+        const mid = part(item.mid, 0.7);
+        const extra = part(item.extra, 0.3);
+        score += Math.max(main, mid, extra);
+        if (main || mid) hits++;
       }
       if (score > 0) results.push({ doc: item.doc, score, hits, ratio: score / total, query: query.length });
     }

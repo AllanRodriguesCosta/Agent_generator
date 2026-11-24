@@ -1,4 +1,9 @@
-# Próximas melhorias (roadmap)
+# Próximas melhorias (histórico até a 0.6)
+
+> **Roadmap atual: [ROADMAP.md](ROADMAP.md)** (0.8: fotos no chat, perfil da pessoa logada e conversa natural; pesquisa em [PESQUISA-MERCADO.md](PESQUISA-MERCADO.md)) (0.7 em diante: setor, conteúdos, interações e
+> recuperação em etapas). B6 ("Você quis dizer") e parte de B7 (oferecer humano) foram feitos na
+> 0.7.
+
 
 > A priorização de produto, princípios de privacidade e o caminho para IA limitada por capacidades
 > aprovadas estão em [ROADMAP-PRODUTO.md](ROADMAP-PRODUTO.md). Esta página preserva o backlog
@@ -29,7 +34,7 @@ e gratuita. Ordem sugerida: primeiro o que dá mais resultado com menos código.
 | B3 | ✅ (0.4) **Memória da conversa**: "e o mais barato?", "e em azul?", "compara os dois" usam a última lista | Hoje só "mais opções" usa o contexto |
 | B4 | ✅ (0.4, comparar) **Comparar itens** lado a lado e **recomendar com justificativa** ("este, porque cabe no orçamento e é o mais vendido") | Igual ao montador de setup da Violet Voltage, só que genérico |
 | B5 | **Ações no site**: o widget dispara eventos (`agente:adicionar-carrinho`, `agente:abrir-pagina`, `agente:preencher-formulario`) que o site escuta | O agente deixa de só responder e passa a fazer |
-| B6 | **"Você quis dizer...?"** com as 2 perguntas mais próximas quando a confiança é média | Menos "não entendi" |
+| B6 | ✅ (0.7) **"Você quis dizer...?"** com as 2 perguntas mais próximas quando a confiança é média | Menos "não entendi" |
 | B7 | **Passar para um humano** com o resumo da conversa (WhatsApp/e-mail pré-preenchido) | Atendimento real quando o agente não sabe |
 | B8 | **Tom e personalidade** configuráveis (formal, descontraído), variações de resposta e small talk | Deixa de soar repetitivo |
 | B9 | Respostas com **cartões** (foto, preço, botão) e **respostas rápidas** dinâmicas por contexto | Mais parecido com assistentes de lojas reais |

@@ -7,10 +7,15 @@
 //   fluxos.json     [{ id, gatilhos: [...], pergunta, opcoes: [{ rotulo, resposta, acoes, proximo }] }]
 //   consultas.json  { login, buscas: [{ id, rotulo, modelo, exemplos }], dados: [{ id, rotulo, url, exemplos, campos, pagina }] }
 //   acoes.json      { versao, padrao: "negar", acoes: [{ id, tipo: "navegar", href, rotulo, permissao, confirmacao }], candidatas: [...] }
+//   setor.json      (0.7) { id, nome, glossario: [{ id, termo, sinonimos, definicao }], sinonimos: [[...]] }
+//   conteudos.json  (0.7) [{ id, titulo, resumo, topicos, link }]
+//   interacoes.json (0.7) [{ id, tipo, titulo, resumo, campos, requerLogin, link, exemplos }]
+//   midias.json     (0.8) { galerias: [{ id, titulo, etapa, grupo, link, termos, itens: [{ src, legenda, data }] }] }
+//   perfil.json     (0.8) { ativo, fonte, validadeMin, pagina, apelidos, perguntas: [{ id, rotulo, exemplos, resposta, midia, grupo }] }
 // A conferência corta o que for grande demais e devolve a lista de problemas encontrados.
 
-export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes"];
-export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000, fluxos: 60, opcoes: 8, consultas: 12, capacidades: 300 };
+export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes", "midias", "perfil"];
+export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000, fluxos: 60, opcoes: 8, consultas: 12, glossario: 120, conteudos: 400, interacoes: 40, galerias: 80, fotos: 60, perfil: 20, capacidades: 300 };
 
 const str = (v, max = LIMITS.curto) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -61,6 +66,10 @@ export function checkKnowledge(input = {}) {
     limiar: Number.isFinite(a.limiar) && a.limiar >= 0.3 && a.limiar <= 0.95 ? a.limiar : 0.55,
     cor: /^#[0-9a-f]{6}$/i.test(a.cor || "") ? a.cor : "#6d28d9",
     posicao: a.posicao === "esquerda" ? "esquerda" : "direita",
+    // Versão 0.8: tom das frases de ligação ("neutro" mantém só o conteúdo da base).
+    tom: ["amigavel", "formal", "neutro"].includes(a.tom) ? a.tom : "amigavel",
+    // Versão 0.8: simula digitação no widget (ms por caractere, 0 desliga; teto de 1,2 s).
+    digitacao: Number.isFinite(a.digitacao) && a.digitacao >= 0 && a.digitacao <= 40 ? a.digitacao : 12,
     // Opcional: endereço do servidor do agente (modo servidor). Vazio = roda no navegador.
     endpoint: safeLink(a.endpoint),
     // Versão 0.4: para onde o widget manda as frases que não entendeu (servidor do próprio site,
@@ -291,7 +300,120 @@ export function checkKnowledge(input = {}) {
       return ok;
     });
 
-  if (!Object.keys(intencoes).length && !faq.length && !paginas.length && !itens.length && !url && !fluxos.length)
+  // Versão 0.7: base setorial (glossário e sinônimos), conteúdos resumidos e interações.
+  const rawS = input.setor && typeof input.setor === "object" && !Array.isArray(input.setor) ? input.setor : {};
+  const glossIds = new Set();
+  const setor = {
+    id: slug(rawS.id) || "geral",
+    nome: str(rawS.nome, 80) || "Geral",
+    glossario: list(rawS.glossario)
+      .slice(0, LIMITS.glossario)
+      .map((g) => {
+        let id = slug(g?.id || g?.termo);
+        for (let n = 2; glossIds.has(id); n++) id = `${slug(g?.id || g?.termo)}-${n}`;
+        glossIds.add(id);
+        return { id, termo: str(g?.termo, 80), sinonimos: list(g?.sinonimos).map((x) => str(x, 60)).filter(Boolean).slice(0, 10), definicao: str(g?.definicao, 600) };
+      })
+      .filter((g) => {
+        const ok = g.termo && g.definicao;
+        if (!ok) problems.push(`setor.glossario.${g.id}: termo ou definição vazia; ignorado.`);
+        return ok;
+      }),
+    sinonimos: list(rawS.sinonimos)
+      .map((group) => [...new Set(list(group).map((w) => str(w, 40).toLowerCase()).filter(Boolean))].slice(0, 12))
+      .filter((group) => group.length >= 2)
+      .slice(0, 80),
+  };
+  const conteudos = list(input.conteudos)
+    .slice(0, LIMITS.conteudos)
+    .map((c, i) => ({ id: uniqueId(c?.id || c?.titulo, `conteudo-${i + 1}`), titulo: str(c?.titulo, 120), resumo: str(c?.resumo, 700), topicos: str(c?.topicos, 300), link: safeLink(c?.link) }))
+    .filter((c) => {
+      const ok = c.titulo && c.resumo;
+      if (!ok) problems.push(`conteudos.${c.id}: título ou resumo vazio; ignorado.`);
+      return ok;
+    });
+  const interacoes = list(input.interacoes)
+    .slice(0, LIMITS.interacoes)
+    .map((x, i) => ({
+      id: (slug(x?.id || x?.tipo) || `interacao-${i + 1}`).replace(/-/g, "_"),
+      tipo: slug(x?.tipo) || "outra",
+      titulo: str(x?.titulo, 80),
+      resumo: str(x?.resumo, 600),
+      campos: list(x?.campos).map((c) => str(c, 40)).filter(Boolean).slice(0, 10),
+      requerLogin: x?.requerLogin === true,
+      link: safeLink(x?.link),
+      exemplos: [...new Set(list(x?.exemplos).map((e) => str(e, 200)).filter(Boolean))].slice(0, LIMITS.exemplos),
+    }))
+    .filter((x, i, all) => {
+      const ok = x.resumo && x.link && !all.slice(0, i).some((y) => y.id === x.id);
+      if (!ok) problems.push(`interacoes.${x.id}: sem resumo, sem link ou repetida; ignorada.`);
+      return ok;
+    });
+
+  // Versão 0.8: galerias de fotos (por etapa/categoria) e perfil da pessoa logada.
+  const rawM = input.midias && typeof input.midias === "object" ? input.midias : {};
+  const galIds = new Set();
+  const galerias = list(Array.isArray(rawM) ? rawM : rawM.galerias)
+    .slice(0, LIMITS.galerias)
+    .map((g, i) => {
+      let id = slug(g?.id || g?.titulo) || `galeria-${i + 1}`;
+      for (let n = 2; galIds.has(id); n++) id = `${slug(g?.id || g?.titulo) || "galeria"}-${n}`;
+      galIds.add(id);
+      return {
+        id,
+        titulo: str(g?.titulo, 120),
+        etapa: str(g?.etapa, 80),
+        grupo: str(g?.grupo, 80),
+        link: safeLink(g?.link),
+        termos: str(g?.termos, 300),
+        itens: list(g?.itens)
+          .slice(0, LIMITS.fotos)
+          .map((f, ordem) => ({ src: safeLink(f?.src), legenda: str(f?.legenda, 200), data: /^\d{4}-\d{2}-\d{2}$/.test(f?.data || "") ? f.data : "", ordem }))
+          .filter((f) => f.src),
+      };
+    })
+    .filter((g) => {
+      const ok = g.titulo && g.itens.length;
+      if (!ok) problems.push(`midias.${g.id}: sem título ou sem fotos válidas; ignorada.`);
+      return ok;
+    });
+  const midias = { galerias };
+  const rawP = input.perfil && typeof input.perfil === "object" && !Array.isArray(input.perfil) ? input.perfil : {};
+  const fonte = (() => {
+    const link = safeLink(rawP.fonte);
+    if (link && /^https?:/i.test(link)) problems.push("perfil.fonte: precisa ser caminho do próprio site (ex.: /api/minha-conta); ignorada.");
+    return link && !/^https?:/i.test(link) ? link : "";
+  })();
+  const perfil = {
+    ativo: rawP.ativo === true,
+    fonte,
+    validadeMin: Number.isFinite(rawP.validadeMin) && rawP.validadeMin >= 1 && rawP.validadeMin <= 240 ? rawP.validadeMin : 15,
+    pagina: safeLink(rawP.pagina),
+    apelidos: Object.fromEntries(
+      Object.entries(rawP.apelidos && typeof rawP.apelidos === "object" ? rawP.apelidos : {})
+        .filter(([k, v]) => /^[\w.]{1,40}$/.test(k) && Array.isArray(v))
+        .slice(0, 60)
+        .map(([k, v]) => [k, v.map((x) => str(x, 40)).filter((x) => /^[\w.]{1,40}$/.test(x)).slice(0, 10)]),
+    ),
+    perguntas: list(rawP.perguntas)
+      .slice(0, LIMITS.perfil)
+      .map((q, i) => ({
+        id: (slug(q?.id || q?.rotulo) || `perfil-${i + 1}`).replace(/-/g, "_"),
+        rotulo: str(q?.rotulo, 80) || "seus dados",
+        exemplos: [...new Set(list(q?.exemplos).map((e) => str(e, 200)).filter(Boolean))].slice(0, LIMITS.exemplos),
+        resposta: str(q?.resposta, 600),
+        midia: str(q?.midia, 120),
+        grupo: /^[\w.]{1,40}$/.test(q?.grupo || "") ? q.grupo : "",
+        acoes: actions(q?.acoes, problems, `perfil.${q?.id || i}`),
+      }))
+      .filter((q, i, all) => {
+        const ok = q.resposta && q.exemplos.length >= 2 && !all.slice(0, i).some((y) => y.id === q.id);
+        if (!ok) problems.push(`perfil.perguntas.${q.id}: precisa de resposta e 2 exemplos (e id único); ignorada.`);
+        return ok;
+      }),
+  };
+
+  if (!Object.keys(intencoes).length && !faq.length && !paginas.length && !itens.length && !url && !fluxos.length && !conteudos.length && !interacoes.length)
     problems.push("Base vazia: o agente só vai cumprimentar e pedir outra pergunta.");
-  return { knowledge: { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, acoes: { versao: 1, padrao: politicaAcoes, acoes, candidatas } }, problems };
+  return { knowledge: { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, acoes: { versao: 1, padrao: politicaAcoes, acoes, candidatas }, setor, conteudos, interacoes, midias, perfil }, problems };
 }

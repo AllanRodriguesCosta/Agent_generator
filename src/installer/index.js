@@ -6,8 +6,8 @@ import { join, resolve, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-export const CORE_FILES = ["text.js", "classifier.js", "search.js", "knowledge.js", "agent.js", "catalog-map.js", "lookup.js", "entities.js", "privacy.js", "ia.js"];
-export const KNOWLEDGE_FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes"];
+export const CORE_FILES = ["text.js", "classifier.js", "search.js", "knowledge.js", "agent.js", "catalog-map.js", "lookup.js", "entities.js", "privacy.js", "ia.js", "context.js"];
+export const KNOWLEDGE_FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes", "midias", "perfil"];
 export const MARKER = "<!-- agente: agent-generator -->";
 
 const exists = async (p) => access(p).then(() => true, () => false);

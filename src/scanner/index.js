@@ -13,8 +13,9 @@ import { pagesFromSitemap, titleFromPath, LOCALE_FILE, readLocale, nextMetadata,
 import { tokens, STOPWORDS } from "../agent/text.js";
 
 export const REPORT_VERSION = 1;
+export const TECH_FAQ = /\b(npm|npx|yarn|pnpm|git|github|docker|deploy|localhost|load balancer|node(\.js)?|\.env|variave(l|is) de ambiente|ci\/cd|pull request|commit|branch|lint|typescript|vite|webpack|render\.com|azure|vercel|heroku|kubernetes|codex|endpoint|api key|token de acesso)\b/i;
 const CONFIG_JSON = /(^|\/)(package|tsconfig|jsconfig|composer|manifest|vercel|netlify|firebase|app|angular|nest-cli|babel|\.?eslintrc|\.?prettierrc|renovate|lerna|turbo|deno|bower)(\.[\w-]+)?\.json$|(^|\/)(locales?|i18n|lang|translations?)\//i;
-const STATIC_PREFIX = /^(public|static|www|wwwroot|site|src\/public|htdocs|html)\//;
+const STATIC_PREFIX = /^(public|static|www|wwwroot|site|web|src\/public|htdocs|html)\//;
 const MARKUP = new Set([".html", ".htm", ".jsx", ".tsx", ".vue", ".svelte", ".astro", ".php", ".erb", ".ejs", ".hbs", ".njk", ".liquid"]);
 const SOURCE = new Set([".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".vue", ".py", ".php"]);
 
@@ -120,6 +121,13 @@ export async function scanProject(root, { maxFiles } = {}) {
             descricao: page.descricao || page.paragraphs[0]?.slice(0, 200) || "",
             secoes: page.headings.map((h) => h.texto).slice(0, 15),
             arquivo: rel,
+            // Versão 0.7: seções com texto (resumos), tipos/ações schema.org e botões.
+            blocos: page.blocks,
+            // Versão 0.8: fotos de conteúdo (galerias por etapa/categoria).
+            imagens: page.images,
+            schema: page.schemaTypes,
+            acoesSchema: page.potentialActions,
+            botoes: page.buttons,
           });
         if (page.lang) report.projeto.idioma = page.lang;
         for (const f of page.faq) report.faq.push({ pergunta: f.pergunta, resposta: f.resposta.slice(0, 1000), fonte: rel, link: f.ancora ? `${href}#${f.ancora}` : href });
@@ -145,7 +153,9 @@ export async function scanProject(root, { maxFiles } = {}) {
       const doc = parseMarkdown(content);
       if (/^(changelog|license|licen[cs]a|contributing|code_of_conduct)/i.test(basename(rel))) continue;
       report.documentos.push({ arquivo: rel, titulo: doc.titulo, secoes: doc.secoes.slice(0, 40).map((s) => ({ titulo: s.titulo, texto: s.texto.slice(0, 400) })) });
-      for (const f of doc.faq) report.faq.push({ ...f, fonte: rel });
+      // Versão 0.7: pergunta de documentação técnica (deploy, npm, servidor...) é para quem
+      // mantém o projeto, não para o visitante; fica fora da FAQ do agente.
+      for (const f of doc.faq) if (!TECH_FAQ.test(`${f.pergunta} ${f.resposta}`)) report.faq.push({ ...f, fonte: rel });
       if (rel.toLowerCase() === "readme.md" && !report.projeto.descricao) {
         const first = doc.secoes[0]?.texto || "";
         report.projeto.descricao = first.slice(0, 300);
