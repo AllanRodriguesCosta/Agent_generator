@@ -12,13 +12,18 @@
 //   interacoes.json (0.7) [{ id, tipo, titulo, resumo, campos, requerLogin, link, exemplos }]
 //   midias.json     (0.8) { galerias: [{ id, titulo, etapa, grupo, link, termos, itens: [{ src, legenda, data }] }] }
 //   perfil.json     (0.8) { ativo, fonte, validadeMin, pagina, apelidos, perguntas: [{ id, rotulo, exemplos, resposta, midia, grupo }] }
+// Versão 0.10: agente.proativas [{ tipo, pagina, texto, sugestoes, aposSeg }] e agente.proativa (liga/desliga);
+//   setor.fora [{ id, nome, termos }]; conteudos[].detalhe; midias.videos [{ id, titulo, grupo,
+//   plataforma, url, link, termos }] e midias.arquivos [{ id, titulo, tipo, href, grupo, link, termos }].
 // A conferência corta o que for grande demais e devolve a lista de problemas encontrados.
 
 export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes", "midias", "perfil"];
 // Versão 0.9: funcionalidades que podem ser ligadas ou desligadas (agente.json -> recursos). Faltando =
 // ligada, como nas versões anteriores. Desligar não apaga nada da base: só deixa de ser usado.
-export const RECURSOS = ["catalogo", "busca", "conta", "perfil", "formularios", "fotos", "fluxos"];
-export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000, fluxos: 60, opcoes: 8, consultas: 12, glossario: 120, conteudos: 400, interacoes: 40, galerias: 80, fotos: 60, perfil: 20, capacidades: 300 };
+// Versão 0.10: "preencher" (captura de contato: nome e e-mail/telefone perguntados na conversa e
+// colocados no formulário do próprio site, que a pessoa confere e envia).
+export const RECURSOS = ["catalogo", "busca", "conta", "perfil", "formularios", "preencher", "fotos", "fluxos"];
+export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000, fluxos: 60, opcoes: 8, consultas: 12, glossario: 120, conteudos: 400, interacoes: 40, galerias: 80, fotos: 60, perfil: 20, capacidades: 300, videos: 60, arquivos: 80, proativas: 20, fora: 30 };
 
 const str = (v, max = LIMITS.curto) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -74,6 +79,21 @@ export function checkKnowledge(input = {}) {
     tom: ["amigavel", "formal", "neutro"].includes(a.tom) ? a.tom : "amigavel",
     // Versão 0.8: simula digitação no widget (ms por caractere, 0 desliga; teto de 1,2 s).
     digitacao: Number.isFinite(a.digitacao) && a.digitacao >= 0 && a.digitacao <= 40 ? a.digitacao : 12,
+    // Versão 0.10: mensagem proativa (uma por sessão) nas páginas listadas; false desliga todas.
+    proativa: a.proativa !== false,
+    proativas: list(a.proativas)
+      .slice(0, LIMITS.proativas)
+      .map((p) => ({
+        tipo: ["fotos", "formularios", "geral"].includes(p?.tipo) ? p.tipo : "geral",
+        pagina: (() => {
+          const link = safeLink(p?.pagina);
+          return link && !/^https?:/i.test(link) ? link : "";
+        })(),
+        texto: str(p?.texto, 200),
+        sugestoes: list(p?.sugestoes).map((x) => str(x, 60)).filter(Boolean).slice(0, 2),
+        aposSeg: Number.isFinite(p?.aposSeg) && p.aposSeg >= 3 && p.aposSeg <= 300 ? p.aposSeg : 20,
+      }))
+      .filter((p) => p.pagina && p.texto),
     // Opcional: endereço do servidor do agente (modo servidor). Vazio = roda no navegador.
     endpoint: safeLink(a.endpoint),
     // Versão 0.4: para onde o widget manda as frases que não entendeu (servidor do próprio site,
@@ -327,10 +347,15 @@ export function checkKnowledge(input = {}) {
       .map((group) => [...new Set(list(group).map((w) => str(w, 40).toLowerCase()).filter(Boolean))].slice(0, 12))
       .filter((group) => group.length >= 2)
       .slice(0, 80),
+    // Versão 0.10: o que não é deste site (outros setores), para "isso não é com a gente".
+    fora: list(rawS.fora)
+      .slice(0, LIMITS.fora)
+      .map((f) => ({ id: slug(f?.id), nome: str(f?.nome, 80), termos: list(f?.termos).map((t) => str(t, 40).toLowerCase()).filter((t) => t.length >= 3).slice(0, 20) }))
+      .filter((f) => f.id && f.nome && f.termos.length),
   };
   const conteudos = list(input.conteudos)
     .slice(0, LIMITS.conteudos)
-    .map((c, i) => ({ id: uniqueId(c?.id || c?.titulo, `conteudo-${i + 1}`), titulo: str(c?.titulo, 120), resumo: str(c?.resumo, 700), topicos: str(c?.topicos, 300), link: safeLink(c?.link) }))
+    .map((c, i) => ({ id: uniqueId(c?.id || c?.titulo, `conteudo-${i + 1}`), titulo: str(c?.titulo, 120), resumo: str(c?.resumo, 700), detalhe: str(c?.detalhe, LIMITS.texto), topicos: str(c?.topicos, 300), link: safeLink(c?.link) }))
     .filter((c) => {
       const ok = c.titulo && c.resumo;
       if (!ok) problems.push(`conteudos.${c.id}: título ou resumo vazio; ignorado.`);
@@ -381,7 +406,36 @@ export function checkKnowledge(input = {}) {
       if (!ok) problems.push(`midias.${g.id}: sem título ou sem fotos válidas; ignorada.`);
       return ok;
     });
-  const midias = { galerias };
+  // Versão 0.10: vídeos (YouTube/Vimeo/arquivo do site) e PDFs, mostrados como cartões.
+  const mediaIds = new Set();
+  const mediaId = (base, prefix, i) => {
+    let id = slug(base) || `${prefix}-${i + 1}`;
+    for (let n = 2; mediaIds.has(id); n++) id = `${slug(base) || prefix}-${n}`;
+    mediaIds.add(id);
+    return id;
+  };
+  const videoUrl = (u) => {
+    const link = safeLink(u);
+    if (/^https?:/i.test(link)) return /^https:\/\/(www\.youtube\.com\/watch\?v=[\w-]{11}|youtu\.be\/[\w-]{11}|vimeo\.com\/\d{6,12})$/i.test(link) ? link : "";
+    return /\.(mp4|webm|ogv|m4v)(\?|$)/i.test(link) ? link : "";
+  };
+  const videos = list(rawM.videos)
+    .slice(0, LIMITS.videos)
+    .map((v, i) => ({ id: mediaId(v?.id || v?.titulo, "video", i), titulo: str(v?.titulo, 120), grupo: str(v?.grupo, 80), plataforma: ["youtube", "vimeo", "arquivo"].includes(v?.plataforma) ? v.plataforma : "arquivo", url: videoUrl(v?.url), link: safeLink(v?.link), termos: str(v?.termos, 200) }))
+    .filter((v) => {
+      const ok = v.titulo && v.url;
+      if (!ok) problems.push(`midias.videos.${v.id}: sem título ou com endereço que não é YouTube, Vimeo ou vídeo do site; ignorado.`);
+      return ok;
+    });
+  const arquivos = list(rawM.arquivos)
+    .slice(0, LIMITS.arquivos)
+    .map((f, i) => ({ id: mediaId(f?.id || f?.titulo, "pdf", i), titulo: str(f?.titulo, 120), tipo: "pdf", href: safeLink(f?.href), grupo: str(f?.grupo, 80), link: safeLink(f?.link), termos: str(f?.termos, 200) }))
+    .filter((f) => {
+      const ok = f.titulo && /\.pdf(\?|#|$)/i.test(f.href);
+      if (!ok) problems.push(`midias.arquivos.${f.id}: sem título ou não é PDF; ignorado.`);
+      return ok;
+    });
+  const midias = { galerias, videos, arquivos };
   const rawP = input.perfil && typeof input.perfil === "object" && !Array.isArray(input.perfil) ? input.perfil : {};
   const fonte = (() => {
     const link = safeLink(rawP.fonte);
@@ -435,13 +489,18 @@ export function activeView(knowledge) {
   const verCatalogo = (s) => semCatalogo && catalogo.rotulo && s.toLowerCase() === `ver ${catalogo.rotulo}`.toLowerCase();
   return {
     ...knowledge,
-    agente: semCatalogo ? { ...knowledge.agente, sugestoes: knowledge.agente.sugestoes.filter((s) => !verCatalogo(s)) } : knowledge.agente,
+    agente: {
+      ...knowledge.agente,
+      ...(semCatalogo ? { sugestoes: knowledge.agente.sugestoes.filter((s) => !verCatalogo(s)) } : {}),
+      proativas: (knowledge.agente.proativas || []).filter((p) => !off(p.tipo)),
+    },
     intencoes: semCatalogo ? Object.fromEntries(Object.entries(intencoes).map(([k, v]) => [k, { ...v, sugestoes: v.sugestoes.filter((s) => !verCatalogo(s)) }])) : intencoes,
     catalogo: off("catalogo") ? { rotulo: catalogo.rotulo, itens: [] } : catalogo,
     consultas: { ...consultas, buscas: off("busca") ? [] : consultas.buscas, dados: off("conta") ? [] : consultas.dados },
     perfil: off("perfil") ? { ...perfil, ativo: false } : perfil,
     interacoes: off("formularios") ? [] : knowledge.interacoes,
-    midias: off("fotos") ? { ...midias, galerias: [] } : midias,
+    // "Fotos" cobre a mídia toda (fotos, vídeos e PDFs) e as mensagens proativas das galerias.
+    midias: off("fotos") ? { ...midias, galerias: [], videos: [], arquivos: [] } : midias,
     fluxos: off("fluxos") ? [] : knowledge.fluxos,
   };
 }

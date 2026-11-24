@@ -4,7 +4,7 @@
 import { checkKnowledge } from "../agent/knowledge.js";
 import { normalize } from "../agent/text.js";
 import { candidatesFromReport } from "../capabilities/glossary.js";
-import { buildDomain } from "../domain/index.js";
+import { buildDomain, buildNudges } from "../domain/index.js";
 
 const uniq = (a) => [...new Set(a.filter(Boolean))];
 const has = (re, ...values) => values.some((v) => re.test(normalize(v)));
@@ -187,6 +187,8 @@ export function generateKnowledge(report, { setor: forcarSetor } = {}) {
   // Versão 0.7: base setorial, conteúdos resumidos e mapa de interações.
   const domain = buildDomain(report, { setor: forcarSetor });
   linkInteractions(intencoes, domain.interacoes);
+  // Versão 0.10: mensagem proativa por página (1 por sessão; agente.proativa = false desliga).
+  agente.proativas = buildNudges(domain);
   if (domain.interacoes.length) {
     const tipos = domain.interacoes.slice(0, 3).map((x) => x.titulo);
     agente.saudacao = `${agente.saudacao} Também explico como funciona ${tipos.map((t) => `"${t}"`).join(", ")}.`.slice(0, 600);
@@ -203,6 +205,7 @@ export function generateKnowledge(report, { setor: forcarSetor } = {}) {
   );
   notes.push(`Conteúdos resumidos: ${knowledge.conteudos.length}. Interações mapeadas: ${knowledge.interacoes.map((x) => x.tipo).join(", ") || "nenhuma"}.`);
   const fotos = knowledge.midias.galerias.reduce((n, g) => n + g.itens.length, 0);
+  if (knowledge.midias.videos.length || knowledge.midias.arquivos.length) notes.push(`Vídeos: ${knowledge.midias.videos.length}. PDFs: ${knowledge.midias.arquivos.length} (viram cartões no chat).`);
   notes.push(`Galerias de fotos: ${knowledge.midias.galerias.length} (${fotos} fotos). Perfil do usuário: ${knowledge.perfil.perguntas.length} moldes do setor, desligado (agent-generator perfil <pasta> --fonte /api/... para ligar).`);
   return { knowledge, notes, domain };
 }

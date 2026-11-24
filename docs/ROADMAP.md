@@ -1,7 +1,7 @@
 # Roadmap do Agent Generator (a partir da 0.7)
 
-> Atualizado em 24/11/2026 com a 0.9 (instalador visual). A conversa guiada, que estava prevista
-> para a 0.9, passou para a 0.10.
+> Atualizado em 24/11/2026 com a 0.10 (conversa guiada e proatividade). A conversa guiada, que
+> estava prevista para a 0.9, entrou na 0.10.
 
 Objetivo: chegar perto do limite do que um agente **local, gratuito e sem IA obrigatória**
 consegue fazer, e deixar a IA opcional só para o que realmente precisa dela. A pesquisa que
@@ -60,19 +60,21 @@ Crisp, Botpress, Voiceflow, Hyperleap). Uso: [CONTEXTO-E-MIDIA.md](CONTEXTO-E-MI
 | V9 | **Desinstalador**: o executável detecta um agente criado por ele e oferece desinstalar (widget fora das páginas, pasta apagada só se for nossa, base guardada); comando `desinstalar` | ✅ |
 | V8 | Windows sem terminal (subsistema GUI no cabeçalho PE), Edge/Chrome em modo aplicativo, fecha sozinho quando a janela some | ✅ |
 
-## 0.10 — Conversa guiada e proatividade 🔜
+## 0.10 — Conversa guiada e proatividade ✅ (24/11/2026)
 
-| # | Item | Por quê |
+Uso e exemplos: [CONVERSA-GUIADA.md](CONVERSA-GUIADA.md).
+
+| # | Item | Situação |
 | --- | --- | --- |
-| M1 | **Pergunta de esclarecimento por lacuna** (slot filling): "fotos da área de lazer" com 2 empreendimentos → "De qual? Residencial Sol ou Parque Verde" e guarda a resposta | É o que Fin/Lyro fazem com "asks before answering" |
-| M2 | **Mensagem proativa** por página/evento (1 por sessão, configurável): "Quer ver as fotos mais recentes desta obra?" | Proactive Lyro e Zendesk: mais conversas na hora certa |
-| M3 | **Fora do escopo por setor** ("vocês vendem carro?" numa clínica) (era I1) | Diferenciar "não entendi" de "não fazemos isso" |
-| M4 | **BM25** no lugar do IDF simples (era I3) | Conteúdos longos e catálogos grandes |
-| M5 | **Confirmação antes de levar a uma interação com login** (era I5) | Menos frustração |
-| M6 | **Captura de contato conversacional**: nome + e-mail/telefone perguntados um a um, conferidos, e o formulário do próprio site preenchido para a pessoa enviar (era J1) | Chatbase Collect Leads, sem banco novo |
-| M7 | Resposta curta/detalhada ("explica melhor" mostra o resumo maior do conteúdo) | Fin: tamanho da resposta |
-| M8 | Galerias de vídeo (YouTube/Vimeo do próprio site) e PDFs (memorial, cardápio) como cartões | Hyperleap: ativos viram cartões |
-| M9 | **Perfil com listas** (várias unidades, vários pedidos): "qual unidade?" e resposta por item | Clientes com mais de um imóvel/pedido |
+| M1 | **Pergunta de esclarecimento por lacuna**: "fotos da área de lazer" com 2 empreendimentos → "De qual? Parque Verde ou Residencial Sol"; a resposta vale para as próximas perguntas | ✅ |
+| M2 | **Mensagem proativa** por página (galerias e formulários), 1 por sessão, configurável (`agente.proativas`) | ✅ |
+| M3 | **Fora do escopo por setor** (`setor.fora`): "vocês vendem carro?" numa construtora diz que não é com a gente | ✅ |
+| M4 | **BM25** ordena a busca; a cobertura continua decidindo se responde | ✅ |
+| M5 | **Confirmação antes de levar a uma interação com login** (e `/contato` deixou de contar como área logada) | ✅ |
+| M6 | **Captura de contato conversacional**: nome + e-mail/telefone perguntados um a um, conferidos, e o formulário do próprio site preenchido para a pessoa enviar (funcionalidade `preencher`) | ✅ |
+| M7 | Resposta curta/detalhada ("Explicar melhor" mostra `conteudos[].detalhe`) | ✅ |
+| M8 | Vídeos (YouTube/Vimeo/arquivo do site) e PDFs como cartões (`midias.videos`, `midias.arquivos`) | ✅ |
+| M9 | **Perfil com listas** (várias unidades/pedidos): "De qual?", resposta por item, "todas" e item citado na frase | ✅ |
 
 ## 1.0 — Medição, idiomas e plataforma ⏳
 
@@ -95,6 +97,9 @@ Crisp, Botpress, Voiceflow, Hyperleap). Uso: [CONTEXTO-E-MIDIA.md](CONTEXTO-E-MI
 - Teste em projeto real (Violet Voltage e o café de exemplo) antes de publicar a versão.
 - 0.8: fixture `tests/fixtures/construtora/` (2 empreendimentos, 6 galerias, 11 fotos) e teste do
   widget num navegador de verdade (foto carregada, login pedido, perfil completado, sem erros).
+- 0.10: fixture da construtora com vídeo e PDF; conversa guiada testada no navegador de verdade
+  (convite proativo, cartões, fora do escopo, captura de contato e formulário preenchido em outra
+  página, sem erros no console).
 - 0.9: instalador percorrido de ponta a ponta num navegador de verdade (8 etapas, instalação,
   conversa de teste, treino iniciado e encerrado, sem erros no console) e teste de fumaça do
   executável no CI (`scripts/smoke-instalador.mjs`).

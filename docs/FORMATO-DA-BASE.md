@@ -22,7 +22,9 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
   "registro": "",
   "tom": "amigavel",
   "digitacao": 12,
-  "recursos": { "catalogo": true, "busca": true, "conta": true, "perfil": true, "formularios": true, "fotos": true, "fluxos": true }
+  "recursos": { "catalogo": true, "busca": true, "conta": true, "perfil": true, "formularios": true, "preencher": true, "fotos": true, "fluxos": true },
+  "proativa": true,
+  "proativas": [{ "tipo": "fotos", "pagina": "/obras/sol.html", "texto": "Quer ver as fotos mais recentes do Sol?", "sugestoes": ["Fotos de Sol"], "aposSeg": 20 }]
 }
 ```
 
@@ -43,7 +45,13 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
 - `recursos` (0.9): funcionalidades ligadas (`true`, padrão) ou desligadas (`false`), escolhidas
   nos checkboxes do instalador visual: `catalogo`, `busca`, `conta` (consultas da conta),
   `perfil`, `formularios` (interações), `fotos` (galerias) e `fluxos`. Desligar não apaga o
-  arquivo correspondente: o agente só deixa de usar aquela parte (`activeView`).
+  arquivo correspondente: o agente só deixa de usar aquela parte (`activeView`). Na 0.10 entrou
+  `preencher` (captura de contato que preenche o formulário do site) e `fotos` passou a cobrir
+  também vídeos e PDFs.
+- `proativa` e `proativas` (0.10): mensagem que o widget mostra uma vez por sessão na página
+  indicada (`pagina`: caminho do próprio site; `aposSeg`: 3 a 300; `tipo`: `fotos`,
+  `formularios` ou `geral`). `"proativa": false` desliga todas. Ver
+  [CONVERSA-GUIADA.md](CONVERSA-GUIADA.md).
 
 ## intencoes.json
 
@@ -220,3 +228,16 @@ sem link são ignorados; links perigosos são descartados. Bases antigas continu
   ignorada; com `ativo: false` (padrão gerado) as perguntas não entram no classificador.
 
 Como gerar, editar e ligar: [CONTEXTO-E-MIDIA.md](CONTEXTO-E-MIDIA.md).
+
+## Campos novos da 0.10
+
+- `midias.json` ganha `videos: [{ id, titulo, grupo, plataforma, url, link, termos }]` (até 60;
+  `url` só YouTube `watch?v=`, `youtu.be`, Vimeo ou arquivo `.mp4/.webm/.ogv/.m4v` do site) e
+  `arquivos: [{ id, titulo, tipo: "pdf", href, grupo, link, termos }]` (até 80; só `.pdf`).
+- `setor.json` ganha `fora: [{ id, nome, termos }]`: o que claramente não é deste site (até 30
+  grupos). Pode editar à mão: tire um termo que o site atende ou acrescente outro.
+- `conteudos.json` ganha `detalhe` (opcional): o resumo maior mostrado em "explica melhor".
+- `perfil.json` não muda: listas nos dados da pessoa (`unidades`, `pedidos`) são reconhecidas
+  sozinhas.
+
+Detalhes e exemplos: [CONVERSA-GUIADA.md](CONVERSA-GUIADA.md).

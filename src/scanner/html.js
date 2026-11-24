@@ -107,7 +107,10 @@ export function parseMarkup(content) {
   }
   // Versão 0.8: imagens de conteúdo (galerias): legenda, data e etapa/categoria de cada foto.
   const images = imagesOf(body);
-  return { images, blocks: blocks.slice(0, 30), schemaTypes: [...new Set(schemaTypes)], potentialActions: potentialActions.filter((a, i) => potentialActions.findIndex((b) => b.tipo === a.tipo && b.alvo === a.alvo) === i).slice(0, 10), titulo, descricao, lang, faq: faq.filter((f) => f.pergunta && f.resposta && f.pergunta.length <= 300).slice(0, 200), headings, links, forms, buttons: [...new Set(buttons)].slice(0, 20), paragraphs: [...new Set(paragraphs)].slice(0, 40), texto: textOf(body).slice(0, 20000) };
+  // Versão 0.10: vídeos (YouTube/Vimeo/arquivo do site) e PDFs ligados nas páginas.
+  const videos = videosOf(src);
+  const files = filesOf(body);
+  return { images, videos, files, blocks: blocks.slice(0, 30), schemaTypes: [...new Set(schemaTypes)], potentialActions: potentialActions.filter((a, i) => potentialActions.findIndex((b) => b.tipo === a.tipo && b.alvo === a.alvo) === i).slice(0, 10), titulo, descricao, lang, faq: faq.filter((f) => f.pergunta && f.resposta && f.pergunta.length <= 300).slice(0, 200), headings, links, forms, buttons: [...new Set(buttons)].slice(0, 20), paragraphs: [...new Set(paragraphs)].slice(0, 40), texto: textOf(body).slice(0, 20000) };
 }
 
 // Versão 0.8: fotos de conteúdo, na ordem da página. Cada uma leva a seção onde está (último
@@ -162,4 +165,57 @@ export function imagesOf(body) {
     push(im.index, im[0]);
   }
   return out.sort((a, b) => a.pos - b.pos).slice(0, 120).map(({ pos, ...img }, ordem) => ({ ...img, ordem }));
+}
+
+// Versão 0.10: vídeos incorporados ou ligados (YouTube, Vimeo, <video> do próprio site) e PDFs.
+// Cada um leva a seção onde está (último h2/h3 antes dele) para o agente achar "vídeo da obra".
+const YT = /(?:youtube(?:-nocookie)?\.com\/(?:embed\/|watch\?(?:[^"'\s]*&)?v=|shorts\/)|youtu\.be\/)([\w-]{11})/i;
+const VIMEO = /(?:player\.)?vimeo\.com\/(?:video\/)?(\d{6,12})/i;
+function sectionsOf(body) {
+  const heads = [...body.matchAll(/<h([1-3])\b([^>]*)>([\s\S]*?)<\/h\1>/gi)].map((h) => ({ at: h.index, nivel: Number(h[1]), texto: textOf(h[3]).slice(0, 80), ancora: attr(h[2], "id") }));
+  return (pos) => heads.filter((h) => h.at < pos && h.nivel >= 2).at(-1) || null;
+}
+export function videoFrom(url) {
+  const u = String(url || "");
+  const yt = u.match(YT);
+  if (yt) return { plataforma: "youtube", vid: yt[1], url: `https://www.youtube.com/watch?v=${yt[1]}` };
+  const vm = u.match(VIMEO);
+  if (vm) return { plataforma: "vimeo", vid: vm[1], url: `https://vimeo.com/${vm[1]}` };
+  if (/^[^:]*\.(mp4|webm|ogv|m4v)(\?|#|$)/i.test(u)) return { plataforma: "arquivo", vid: u, url: u };
+  return null;
+}
+export function videosOf(markup) {
+  const body = String(markup).replace(/<(script|style|svg|noscript)\b[\s\S]*?<\/\1>/gi, " ");
+  const sectionAt = sectionsOf(body);
+  const out = [];
+  const add = (pos, url, titulo) => {
+    const v = videoFrom(url);
+    if (!v || out.some((x) => x.url === v.url)) return;
+    const sec = sectionAt(pos);
+    out.push({ ...v, titulo: String(titulo || sec?.texto || "").replace(/\s+/g, " ").trim().slice(0, 120), etapa: sec?.texto || "", ancora: sec?.ancora || "" });
+  };
+  for (const m of body.matchAll(/<iframe\b([^>]*)>/gi)) add(m.index, attr(m[1], "src") || attr(m[1], "data-src"), attr(m[1], "title"));
+  for (const m of body.matchAll(/<video\b([^>]*)>([\s\S]*?)<\/video>/gi)) {
+    const src = attr(m[1], "src") || attr(m[2].match(/<source\b[^>]*>/i)?.[0] || "", "src");
+    add(m.index, src, attr(m[1], "title") || attr(m[1], "aria-label"));
+  }
+  for (const m of body.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+    const href = attr(m[1], "href");
+    if (YT.test(href) || VIMEO.test(href)) add(m.index, href, textOf(m[2]) || attr(m[1], "title"));
+  }
+  return out.slice(0, 30);
+}
+export function filesOf(markup) {
+  const body = String(markup);
+  const sectionAt = sectionsOf(body);
+  const out = [];
+  for (const m of body.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+    const href = attr(m[1], "href");
+    if (!/\.pdf(\?|#|$)/i.test(href) || /^(javascript|data):/i.test(href) || out.some((f) => f.href === href)) continue;
+    const name = decodeURIComponent(href.split(/[?#]/)[0].split("/").pop() || "").replace(/\.pdf$/i, "").replace(/[-_]+/g, " ");
+    const texto = (textOf(m[2]) || attr(m[1], "title") || attr(m[1], "aria-label") || name).replace(/^(baixar|download|abrir|ver)\s+(o\s+|a\s+)?/i, "").slice(0, 120);
+    const sec = sectionAt(m.index);
+    out.push({ href: href.slice(0, 300), texto, nome: name.slice(0, 120), etapa: sec?.texto || "", ancora: sec?.ancora || "" });
+  }
+  return out.slice(0, 30);
 }

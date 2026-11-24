@@ -48,7 +48,8 @@ comportamento do agente de um jeito que você precisa decidir:
 | Consultar dados da conta | **Sensível** | Pedidos, agendamentos ou reservas de quem está logado (lidos da API do site com a sessão da pessoa; nada fica salvo) |
 | Respostas com os dados de quem está logado | **Sensível** | Perfil (0.8): "como está a obra do meu apartamento?". Campo opcional com o caminho da API (ex.: `/api/minha-conta`) |
 | Explicar formulários e levar até eles | | Agendar, contato, orçamento: diz o que preencher e abre a página. Nunca envia nada |
-| Mostrar fotos no chat | | Galerias por etapa ou categoria |
+| Preencher formulários com a pessoa | **Sensível** | (0.10) Pergunta nome e e-mail/telefone na conversa e deixa o formulário do site preenchido; a pessoa confere e envia. Os dados ficam só na aba do navegador |
+| Mostrar fotos, vídeos e PDFs no chat | | Galerias por etapa ou categoria; vídeos (YouTube/Vimeo) e PDFs como cartões (0.10) |
 | Conversas em etapas | | Perguntas com opções, criadas no treino |
 
 - O que **não foi encontrado** no projeto aparece em cinza, com o selo "Não encontrado".

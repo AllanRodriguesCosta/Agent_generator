@@ -65,3 +65,18 @@
   .agw-typing span:nth-child(3) { animation-delay: 0.3s; }
   @keyframes agw-dot { 50% { opacity: 1; transform: translateY(-3px); } }
 }
+/* Versão 0.10: cartões de vídeo/PDF e mensagem proativa. */
+.agw-cards { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.agw-card { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--agw-line); border-radius: 10px; background: var(--agw-bg); color: inherit; text-decoration: none; }
+.agw-card:hover { border-color: var(--agw-cor); }
+.agw-card-icon { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 8px; background: var(--agw-cor); color: #fff; font-size: 13px; font-weight: 700; }
+.agw-card-pdf { background: #b42318; }
+.agw-nudge { position: absolute; bottom: 60px; right: 0; width: min(280px, calc(100vw - 24px)); padding: 12px 14px; border: 1px solid var(--agw-line); border-radius: 14px;
+  background: var(--agw-bg); box-shadow: 0 12px 32px rgb(0 0 0 / 0.22); }
+.agw-esquerda .agw-nudge { right: auto; left: 0; }
+.agw-nudge p { margin: 0 22px 8px 0; }
+.agw-nudge-close { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--agw-muted); font-size: 18px; cursor: pointer; }
+.agw-open .agw-nudge { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .agw-nudge { animation: agw-in 0.25s ease-out; }
+}

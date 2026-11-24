@@ -163,9 +163,15 @@ test("interação que pede login traz o botão de entrar", () => {
     interacoes: [{ id: "suporte", tipo: "suporte", titulo: "Meus chamados", resumo: "Serve para registrar um problema.", link: "/conta.html#chamados", requerLogin: true, exemplos: ["quero abrir um chamado", "abrir ticket", "registrar um problema"] }],
     intencoes: { saudacao: { exemplos: ["oi", "olá"], respostas: ["Oi!"] } },
   });
-  const r = agent.reply("quero abrir um chamado");
-  assert.equal(r.fonte, "suporte");
+  // 0.10 (M5): primeiro confirma ("Quer que eu te leve até lá?"); com o "sim", os botões.
+  const ask = agent.reply("quero abrir um chamado");
+  assert.equal(ask.fonte, "suporte");
+  assert.match(ask.texto, /precisa entrar na sua conta\. Quer que eu te leve até lá\?/);
+  assert.deepEqual(ask.acoes, []);
+  assert.deepEqual(ask.sugestoes, ["Sim, vamos", "Agora não"]);
+  const r = agent.reply("Sim, vamos", ask.contexto);
   assert.deepEqual(r.acoes.map((a) => a.href), ["/conta.html#chamados", "/login.html"]);
+  assert.equal(agent.reply("agora não", ask.contexto).intencao, "confirmacao_nao");
 });
 
 test("recuperação em etapas: 'Você quis dizer' com candidatos, depois atendimento humano", async () => {

@@ -22,7 +22,7 @@ let cached;
 const base = async () => (cached ||= generateKnowledge(await scanProject(join(ROOT, "examples", "loja-exemplo"))).knowledge);
 
 test("recursos: faltando = ligado; false fica salvo; lista fixa", async () => {
-  assert.deepEqual(RECURSOS, ["catalogo", "busca", "conta", "perfil", "formularios", "fotos", "fluxos"]);
+  assert.deepEqual(RECURSOS, ["catalogo", "busca", "conta", "perfil", "formularios", "preencher", "fotos", "fluxos"]);
   const k = await base();
   assert.ok(RECURSOS.every((id) => k.agente.recursos[id] === true));
   const { knowledge } = checkKnowledge({ ...k, agente: { ...k.agente, recursos: { catalogo: false, fotos: "não", xyz: false } } });

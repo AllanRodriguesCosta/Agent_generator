@@ -35,6 +35,54 @@ const OPENERS = {
   neutro: [""],
 };
 const ORDINAL = { 1: ["1", "um", "primeir", "a primeira", "o primeiro"], 2: ["2", "dois", "duas", "segund"], 3: ["3", "tres", "terceir"], 4: ["4", "quatro", "quart"] };
+// ---- Versão 0.10: conversa guiada ----
+// Respostas curtas a uma pergunta do agente ("sim", "agora não", "todas", "cancelar").
+const YES = /^(sim|s|pode|pode ser|claro|quero|vamos|bora|ok|okay|isso|beleza|por favor|manda|leva|sim,? vamos|preencher( comigo)?)\b/;
+const NO = /^(nao|n|agora nao|depois|deixa|deixa pra la|nao obrigad[oa]|dispenso|nao precisa)\b/;
+const ALL = /^(tod[oa]s?|ambos|ambas|os dois|as duas|tudo|cada um|cada uma)\b/;
+const CANCEL = /^(cancelar|cancela|parar|para|desistir|desisto|esquece|deixa pra la|nao quero mais)\b/;
+const QUESTION_LIKE = /\?\s*$|^(qual|quais|como|onde|quando|quanto|quantos|por que|porque|o que|voces|vcs|tem|aceita|aceitam)\b/;
+// "explica melhor", "mais detalhes": versão longa da última resposta (M7).
+const EXPLAIN_MORE = /^(explica(r)? melhor|explique melhor|me explica melhor|mais detalhes|detalha( mais)?|detalhe mais|fala mais|fale mais|conta mais|me conta mais|quero saber mais|saber mais|mais informac\w*|como assim|nao entendi direito|aprofunda\w*)\b/;
+// Pedido de contato ("me liguem", "quero deixar meu contato"): captura conversacional (M6).
+const LEAD = /\b(me liguem|me ligue|me liga|me retornem|me deem (um )?retorno|quero (um )?retorno|entr(em|e|ar) em contato comigo|deixar (o |meu |os meus |meus )?(contato|dados|telefone|e-?mail)|quero ser contatad[oa]|falar com (um |uma )?(vendedor|consultor|consultora|corretor|corretora|especialista)|preencher (o )?formulario|preenche (o )?formulario|me chamem)\b/;
+const LEAD_TYPES = new Set(["orcamento", "contato", "agendamento", "reserva", "inscricao", "suporte", "parceria", "newsletter"]);
+// Vídeos e PDFs (M8).
+const VIDEO = /\b(videos?|assistir|tour virtual|filme|filmagem)\b/;
+const FILE = /\b(pdfs?|memorial|cardapio|folder|folheto|brochura|manual|regulamento|edital|tabela|plantas?|apresentacao|baixar|download|arquivos?|documentos?|e-?book)\b/;
+const CARD_WORDS = /\b(quero|queria|ver|veja|mostra|mostrar|me mostra|manda|envia|tem|ha|a|o|as|os|da|do|das|dos|de|um|uma|algum|alguma|videos?|assistir|tour virtual|filme|filmagem|pdfs?|arquivos?|documentos?|baixar|download|link|para|pra|sobre|no|na|em|o site|do site)\b/g;
+// Fora do escopo (M3): só quando a frase PEDE a coisa ("vendem carro", "tem dentista"), com o termo
+// até 3 palavras depois do verbo; e só passa na frente de intenções genéricas.
+const OFFER = "(?:vende|vendem|vender|venda|vendas|tem|teria|tem algum|trabalha|trabalham|faz|fazem|fazer|oferece|oferecem|conserta|consertam|aluga|alugam|atende|atendem|serve|servem|quero|queria|preciso|procuro|compro|comprar|marcar|agendar|contratar)";
+const GAP = "(?:um|uma|uns|umas|o|a|os|as|algum|alguma|alguns|algumas|de|do|da|dos|das|com|consultas?|servicos?|atendimento|voces|vcs|ai|aqui)";
+const GENERIC_INTENTS = new Set(["sobre_bot", "ajuda", "catalogo_ajuda", "saudacao"]);
+const joinOr = (items) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ou ${items.at(-1)}`);
+const joinAnd = (items) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} e ${items.at(-1)}`);
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Qual opção a pessoa escolheu: texto do botão, parte dele ("o Sol"), posição ("a segunda") ou
+ *  "todas" (devolve -2, quando permitido). -1 = não respondeu à pergunta. */
+export function pickLabel(labels, text, { todas = false } = {}) {
+  const n = normalize(text);
+  if (!n || !labels.length) return -1;
+  if (todas && ALL.test(n)) return -2;
+  const norm = labels.map((l) => normalize(l));
+  const exact = norm.indexOf(n);
+  if (exact >= 0) return exact;
+  if (n.split(" ").length <= 3)
+    for (const [pos, names] of Object.entries(ORDINAL))
+      if (labels[pos - 1] && names.some((w) => n === w || n === `o ${w}` || n === `a ${w}` || (w.length > 3 && (n.startsWith(w) || n.startsWith(`o ${w}`) || n.startsWith(`a ${w}`))))) return pos - 1;
+  const inside = norm.map((l, i) => [l, i]).filter(([l]) => l.length >= 3 && (n.includes(l) || (n.length >= 3 && l.includes(n))));
+  if (inside.length === 1) return inside[0][1];
+  const words = new Set(tokens(text).filter((w) => w.length > 2));
+  const scored = norm
+    .map((l, i) => {
+      const t = tokens(l).filter((w) => w.length > 2);
+      return { i, r: t.length ? t.filter((w) => words.has(w)).length / t.length : 0 };
+    })
+    .sort((a, b) => b.r - a.r);
+  return scored[0] && scored[0].r >= 0.5 && (!scored[1] || scored[1].r < scored[0].r) ? scored[0].i : -1;
+}
 
 // "até R$ 1.500", "menos de 300", "500 reais", "no máximo 2 mil" → valor máximo em reais.
 export function extractPrice(text) {
@@ -91,7 +139,13 @@ export function createAgent(input) {
     ...interacoes.map((x) => ({ id: x.id, tipo: "interacao", principal: x.titulo, medio: x.exemplos.slice(0, 8).join(" "), secundario: x.resumo, dados: x })),
     // Versão 0.8: galerias de fotos por etapa/categoria.
     ...midias.galerias.map((g) => ({ id: g.id, tipo: "galeria", principal: `${g.etapa || g.titulo}`, medio: `${g.grupo} ${g.titulo}`, secundario: g.termos, dados: g })),
+    // Versão 0.10: vídeos e PDFs (cartões).
+    ...midias.videos.map((v) => ({ id: v.id, tipo: "video", principal: v.titulo, medio: v.grupo, secundario: v.termos, dados: v })),
+    ...midias.arquivos.map((f) => ({ id: f.id, tipo: "arquivo", principal: f.titulo, medio: f.grupo, secundario: f.termos, dados: f })),
   ], { sinonimos: setor.sinonimos });
+  const recursos = knowledge.agente.recursos;
+  // Conversa da vez (frase normalizada e contexto), para as respostas que dependem da memória.
+  let now = { n: "", contexto: {} };
   const fmt = (v) => money(v, agente);
   const vocab = catalogVocab(catalogo.itens);
   const itemById = (id) => catalogo.itens.find((p) => p.id === id);
@@ -125,19 +179,50 @@ export function createAgent(input) {
   };
 
   const interactionById = (id) => interacoes.find((x) => x.id === id);
+  // Versão 0.10: campos do formulário que o agente sabe perguntar (captura de contato).
+  const fieldsOf = (x) => {
+    const c = x.campos.map((f) => normalize(f));
+    return {
+      nome: c.some((f) => /\b(nome|name|seu nome)\b/.test(f) && !/empresa|fantasia|social|usuario/.test(f)),
+      email: c.some((f) => /e-?mail/.test(f)),
+      telefone: c.some((f) => /(telefone|celular|whats|fone|phone|\btel\b)/.test(f)),
+      mensagem: c.some((f) => /(mensagem|message|duvida|descri|detalhe|observ|comentario|assunto|como podemos)/.test(f)),
+    };
+  };
+  const canFill = (x) => {
+    if (!x || recursos.preencher === false || x.requerLogin || !LEAD_TYPES.has(x.tipo) || /^https?:/i.test(x.link)) return false;
+    const f = fieldsOf(x);
+    return f.email || f.telefone;
+  };
   // Interação: para que serve, o que pedir e o botão que leva até a parte do site que faz aquilo.
-  const answerInteraction = (x) => ({
-    texto: `${x.resumo} Te levo até lá:`,
-    acoes: [
-      { rotulo: (/^https?:/i.test(x.link) ? x.titulo || "Abrir" : `Ir para ${x.titulo}`).slice(0, 60), href: x.link },
-      ...(x.requerLogin && consultas.login && consultas.login !== x.link ? [{ rotulo: "Entrar na conta", href: consultas.login }] : []),
-    ],
-    fonte: x.id,
-  });
+  // Versão 0.10: com login, confirma antes de levar (M5); com formulário de contato, oferece
+  // preencher junto (M6).
+  const answerInteraction = (x, { confirmado = false } = {}) => {
+    const login = x.requerLogin && consultas.login && consultas.login !== x.link;
+    if (login && !confirmado)
+      return {
+        texto: `${x.resumo.replace(/\s*É preciso entrar na sua conta\.?/, "")} Para isso você precisa entrar na sua conta. Quer que eu te leve até lá?`,
+        sugestoes: ["Sim, vamos", "Agora não"],
+        fonte: x.id,
+        contexto: { confirmar: x.id },
+      };
+    const fill = canFill(x);
+    return {
+      texto: `${x.resumo} Te levo até lá:${fill ? " Se preferir, eu pego seus dados aqui e deixo o formulário preenchido para você conferir e enviar." : ""}`,
+      acoes: [
+        { rotulo: (/^https?:/i.test(x.link) ? x.titulo || "Abrir" : `Ir para ${x.titulo}`).slice(0, 60), href: x.link },
+        ...(login ? [{ rotulo: "Entrar na conta", href: consultas.login }] : []),
+      ],
+      ...(fill ? { sugestoes: ["Preencher comigo"], contexto: { oferta: x.id } } : {}),
+      fonte: x.id,
+    };
+  };
   // Conteúdo: introdução curta (resumo extraído do próprio texto) e o link para o original.
   const answerContent = (c) => ({
     texto: `Resumindo "${c.titulo}": ${c.resumo}${c.link ? " O texto completo está no link abaixo." : ""}`,
     acoes: c.link ? [{ rotulo: "Ler o conteúdo completo", href: c.link }] : [],
+    // Versão 0.10: resposta curta primeiro; "Explicar melhor" mostra o resumo maior.
+    ...(c.detalhe ? { sugestoes: ["Explicar melhor"] } : {}),
     fonte: c.id,
   });
   // Glossário do setor: definição geral; se o site fala do assunto, aponta para lá.
@@ -151,7 +236,7 @@ export function createAgent(input) {
     };
   };
   const answerDoc = (doc) =>
-    ({ faq: answerFaq, pagina: answerPage, glossario: answerGlossary, conteudo: answerContent, interacao: answerInteraction, galeria: (g) => answerGallery(g) })[doc.tipo]?.(doc.dados) || answerPage(doc.dados);
+    ({ faq: answerFaq, pagina: answerPage, glossario: answerGlossary, conteudo: answerContent, interacao: (x) => answerInteraction(x), galeria: (g) => galleryWithMemory(g, {}), video: (v) => answerCards([v], "video"), arquivo: (f) => answerCards([f], "arquivo") })[doc.tipo]?.(doc.dados) || answerPage(doc.dados);
   // Rótulo curto para "Você quis dizer...?" a partir de uma intenção candidata.
   const labelFor = (name) => {
     if (name.startsWith("interacao__")) return interactionById(name.slice(11))?.titulo;
@@ -219,8 +304,48 @@ export function createAgent(input) {
       acoes: g.link ? [{ rotulo: `Ver todas as fotos de ${g.etapa || g.grupo}`.slice(0, 60), href: g.link }] : [],
       sugestoes: [...(pos > 0 ? ["Foto anterior"] : []), ...siblings.map((x) => `Fotos de ${x.etapa || x.titulo}`.slice(0, 60))].slice(0, 4),
       fonte: g.id,
-      contexto: { galeria: g.id, foto: pos },
+      // Versão 0.10: lembra o empreendimento/lugar escolhido para as próximas perguntas.
+      contexto: { galeria: g.id, foto: pos, ...(manyGroups && g.grupo ? { grupo: g.grupo } : {}) },
     };
+  }
+  // ---- Versão 0.10 (M1): pergunta de esclarecimento por lacuna ----
+  const stageKey = (g) => normalize(g.etapa || g.titulo);
+  // A mesma etapa existe em mais de um lugar ("Áreas de lazer" no Sol e no Parque Verde): usa o
+  // lugar lembrado da conversa; sem ele, pergunta "De qual?" e guarda a resposta.
+  function galleryWithMemory(g, req, pool = midias.galerias) {
+    if (!manyGroups) return answerGallery(g, req);
+    const twins = pool.filter((x) => stageKey(x) === stageKey(g));
+    const groups = [...new Set(twins.map((x) => x.grupo).filter(Boolean))];
+    if (groups.length < 2) return answerGallery(g, req);
+    const lembrado = typeof now.contexto?.grupo === "string" && twins.find((x) => x.grupo === now.contexto.grupo);
+    if (lembrado) return answerGallery(lembrado, req);
+    return askWhich("galeria", groups, `Tenho fotos de ${g.etapa || g.titulo} em ${groups.length} lugares: ${joinOr(groups)}. De qual você quer ver?`, { etapa: stageKey(g), campo: "grupo", modo: req.modo || "", data: req.data || "" });
+  }
+  const askWhich = (tipo, opcoes, texto, extra = {}, sugestoes = opcoes) => ({
+    texto,
+    sugestoes: sugestoes.slice(0, 4).map((x) => String(x).slice(0, 60)),
+    esclarecer: true,
+    contexto: { esclarecer: { tipo, opcoes: opcoes.slice(0, 8).map((x) => String(x).slice(0, 80)), ...extra } },
+  });
+  // Resposta à pergunta "De qual?": escolhe e responde; -1 = a pessoa mudou de assunto.
+  function resolveWhich(esc, text, usuario) {
+    const i = pickLabel(esc.opcoes, text, { todas: Boolean(esc.todas) });
+    if (i === -1) return null;
+    if (esc.tipo === "galeria") {
+      const value = esc.opcoes[i];
+      const cands = midias.galerias.filter((x) => (esc.campo === "etapa" ? stageKey(x) === normalize(value) : x.grupo === value && (!esc.etapa || stageKey(x) === esc.etapa)));
+      const g = esc.etapa || esc.campo === "etapa" ? cands[0] : latestOf(cands);
+      return g ? { r: answerGallery(g, { modo: esc.modo || "ultima", data: esc.data || "" }), intencao: "galeria" } : null;
+    }
+    if (esc.tipo === "perfil") {
+      const q = profileById(esc.id);
+      return q ? { r: answerProfile(q, usuario, i === -2 ? { todas: true } : { item: i }), intencao: `perfil__${q.id}` } : null;
+    }
+    if (esc.tipo === "lead") {
+      const x = interactionById(esc.opcoes[i] && esc.ids?.[i]);
+      return x ? { r: startLead(x), intencao: "lead_nome" } : null;
+    }
+    return null;
   }
   function answerMedia(text, n, contexto, usuario) {
     if (!midias.galerias.length) return null;
@@ -232,26 +357,138 @@ export function createAgent(input) {
       if (/\b(primeir[ao]|mais antig[ao])\b/.test(n)) return answerGallery(last, { modo: "primeira" });
     }
     if (!MEDIA.test(n)) return null;
-    const pool = OWN.test(n) ? galleriesFor(userGroups(usuario)) : midias.galerias;
+    const own = OWN.test(n);
+    const pool = own ? galleriesFor(userGroups(usuario)) : midias.galerias;
     const g = findGallery(text, pool);
-    if (g) return answerGallery(g, photoRequest(n));
+    const named = pool.some((x) => x.grupo && n.includes(normalize(x.grupo)));
+    if (g) return named || own ? answerGallery(g, photoRequest(n)) : galleryWithMemory(g, photoRequest(n), pool);
     // Vários grupos (empreendimentos, imóveis, destinos...): pergunta qual; um só: qual etapa.
+    // Versão 0.10: com um lugar já escolhido na conversa, mostra a mais recente de lá.
+    const lembrado = manyGroups && typeof contexto?.grupo === "string" ? pool.filter((x) => x.grupo === contexto.grupo) : [];
+    if (lembrado.length) return answerGallery(latestOf(lembrado), photoRequest(n));
     const grupos = [...new Set(pool.map((x) => x.grupo).filter(Boolean))];
     const opcoes = grupos.length > 1 ? grupos : [...new Set(pool.map((x) => x.etapa || x.titulo))];
     const pages = [...new Set(pool.map((x) => x.link.split("#")[0]))];
+    const req = photoRequest(n);
     return {
-      texto: grupos.length > 1 ? `Tenho fotos de ${grupos.length} lugares/projetos. De qual você quer ver?` : `Tenho fotos de ${opcoes.length} etapas/categorias. De qual você quer ver?`,
-      sugestoes: opcoes.slice(0, 4).map((x) => `Fotos de ${x}`.slice(0, 60)),
+      ...askWhich(
+        "galeria",
+        opcoes,
+        grupos.length > 1 ? `Tenho fotos de ${grupos.length} lugares/projetos: ${joinOr(grupos.slice(0, 4))}. De qual você quer ver?` : `Tenho fotos de ${opcoes.length} etapas/categorias. De qual você quer ver?`,
+        { campo: grupos.length > 1 ? "grupo" : "etapa", modo: req.modo, data: req.data },
+        opcoes.map((x) => `Fotos de ${x}`),
+      ),
       acoes: pages.length === 1 ? [{ rotulo: "Ver a galeria", href: pages[0] }] : [],
     };
   }
+  // ---- Versão 0.10 (M8): vídeos e PDFs como cartões ----
+  const cardOf = (d, tipo) =>
+    tipo === "video"
+      ? { tipo: "video", titulo: d.titulo, href: d.url, plataforma: d.plataforma, ...(d.link ? { pagina: d.link } : {}) }
+      : { tipo: "pdf", titulo: d.titulo, href: d.href, ...(d.link ? { pagina: d.link } : {}) };
+  function answerCards(list, tipo, intro = "") {
+    const nome = tipo === "video" ? ["o vídeo", "vídeos"] : ["o arquivo", "arquivos em PDF"];
+    const one = list.length === 1;
+    return {
+      texto: intro || (one ? `Achei ${nome[0]} "${list[0].titulo}"${list[0].grupo ? ` (${list[0].grupo})` : ""}:` : `Achei ${list.length} ${nome[1]}:`),
+      cartoes: list.slice(0, 4).map((d) => cardOf(d, tipo)),
+      fonte: one ? list[0].id : undefined,
+    };
+  }
+  function answerVideoOrFile(n) {
+    // "O que é memorial descritivo?" é pedido de definição (glossário), não do arquivo.
+    if (DEFINE.test(n) || EXPLAIN.test(n)) return null;
+    for (const [tipo, re, pool] of [["video", VIDEO, midias.videos], ["arquivo", FILE, midias.arquivos]]) {
+      if (!pool.length || !re.test(n)) continue;
+      const subject = n.replace(CARD_WORDS, " ").replace(/\s+/g, " ").trim();
+      const hits = subject ? index.search(subject, { tipo, limit: 4 }).filter((h) => h.hits >= 1 && h.ratio >= 0.34) : [];
+      if (hits.length) return answerCards(hits.map((h) => h.doc.dados), tipo);
+      // "tem vídeo?", "tem pdf?": mostra o que há. Assunto sem resultado ("cardápio" sem PDF de
+      // cardápio): deixa a base responder.
+      // "link para download" pode ser o app: lista PDFs só quando a pessoa fala em PDF.
+      const generic = tipo === "video" || /\bpdfs?\b/.test(n);
+      if (!generic) continue;
+      const intro = subject && tipo === "video" ? `Não achei um vídeo só sobre isso. ${pool.length === 1 ? "Este é o vídeo do site:" : "Estes são os vídeos do site:"}` : "";
+      return answerCards(pool.slice(0, 3), tipo, intro);
+    }
+    return null;
+  }
   const profileById = (id) => perguntasPerfil.find((q) => q.id === id);
   const loginAction = () => (consultas.login ? [{ rotulo: "Entrar na conta", href: consultas.login }] : []);
-  /** Resposta sobre os dados da pessoa logada; sem dados → pede login (o widget tenta antes). */
-  function answerProfile(q, usuario) {
+  // ---- Versão 0.10 (M9): perfil com listas (várias unidades, vários pedidos) ----
+  const withoutArrays = (o, d = 0) => {
+    if (!o || typeof o !== "object" || d > 4) return o;
+    return Object.fromEntries(Object.entries(o).filter(([, v]) => !Array.isArray(v)).map(([k, v]) => [k, v && typeof v === "object" ? withoutArrays(v, d + 1) : v]));
+  };
+  const scalarsOf = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v == null || typeof v !== "object"));
+  function listsIn(o) {
+    const out = [];
+    const walk = (x, d) => {
+      if (!x || typeof x !== "object" || d > 3) return;
+      for (const [k, v] of Object.entries(x)) {
+        if (Array.isArray(v)) {
+          const objs = v.filter((i) => i && typeof i === "object" && !Array.isArray(i));
+          if (objs.length >= 2) out.push({ chave: k, itens: objs.slice(0, 10) });
+        } else if (v && typeof v === "object") walk(v, d + 1);
+      }
+    };
+    walk(o, 0);
+    return out;
+  }
+  const fillOpts = () => ({ apelidos: perfil.apelidos, idioma: agente.idioma });
+  // A lista que responde a pergunta: com um item da lista, o molde fecha melhor que sem ela.
+  function profileList(q, usuario) {
+    const lists = listsIn(usuario);
+    if (!lists.length) return null;
+    const base = fillTemplate(q.resposta, withoutArrays(usuario), fillOpts()).faltando.length;
+    return lists.find((l) => fillTemplate(q.resposta, { ...scalarsOf(usuario), ...l.itens[0] }, fillOpts()).faltando.length < base) || null;
+  }
+  const placeholders = (q) => [...q.resposta.matchAll(/\{([\w.]{1,60})\}/g)].map((m) => m[1]);
+  // Rótulo de um item: os dois primeiros campos do molde ("1203 – Residencial Sol").
+  const itemLabel = (q, item, i) => {
+    const vals = placeholders(q)
+      .map((c) => valueAt(item, c, perfil.apelidos))
+      .filter((v) => v != null && v !== "" && String(v).length <= 40);
+    return [...new Set(vals.map(String))].slice(0, 2).join(" – ") || `Item ${i + 1}`;
+  };
+  // Item citado na frase ("e o do Parque Verde?", "a unidade 504").
+  const itemMentioned = (q, itens, n) => {
+    const found = itens
+      .map((it, i) => ({ i, vals: placeholders(q).map((c) => valueAt(it, c, perfil.apelidos)).filter((v) => v != null).map((v) => normalize(String(v))).filter((v) => v.length >= 3 || /^\d{2,}$/.test(v)) }))
+      .filter((x) => x.vals.some((v) => new RegExp(`(^|\\W)${escapeRe(v)}(\\W|$)`).test(n)));
+    return found.length === 1 ? found[0].i : -1;
+  };
+  const nounOf = (chave) => {
+    const k = normalize(chave).replace(/[^a-z]/g, " ").trim();
+    return !k || ["data", "items", "itens", "results", "resultados", "rows", "lista"].includes(k) ? "registros" : k;
+  };
+
+  /** Resposta sobre os dados da pessoa logada; sem dados → pede login (o widget tenta antes).
+   *  sel (0.10): { item: índice na lista, todas: true } quando a pessoa tem vários itens. */
+  function answerProfile(q, usuario, sel = {}) {
     const page = perfil.pagina ? [{ rotulo: "Ver minha conta", href: perfil.pagina }] : [];
+    const choice = { ...(Number.isInteger(sel.item) ? { item: sel.item } : {}), ...(sel.todas ? { todas: true } : {}) };
     if (!usuario || typeof usuario !== "object")
-      return { texto: `Para ver ${q.rotulo}, entre na sua conta. Depois é só me perguntar de novo.`, acoes: loginAction().length ? loginAction() : page, perfil: { id: q.id }, precisaLogin: true };
+      return { texto: `Para ver ${q.rotulo}, entre na sua conta. Depois é só me perguntar de novo.`, acoes: loginAction().length ? loginAction() : page, perfil: { id: q.id, ...choice }, precisaLogin: true };
+    const lista = profileList(q, usuario);
+    if (lista) {
+      const labels = lista.itens.map((it, i) => itemLabel(q, it, i));
+      const merged = (it) => ({ ...scalarsOf(usuario), ...it });
+      if (sel.todas) {
+        const parts = lista.itens.map((it, i) => `${labels[i]}: ${answerProfileOne(q, { ...merged(it), nome: undefined }, page).texto}`);
+        return { texto: `${firstName(usuario) && agente.tom !== "neutro" ? `${firstName(usuario)}, aqui estão` : "Aqui estão"} ${q.rotulo} (${lista.itens.length} ${nounOf(lista.chave)}). ${parts.join(" ")}`, acoes: [...q.acoes, ...page].slice(0, 4), perfil: { id: q.id, todas: true } };
+      }
+      const lembrado = now.contexto?.perfilItem?.chave === lista.chave ? now.contexto.perfilItem.indice : -1;
+      const citado = itemMentioned(q, lista.itens, now.n);
+      const idx = Number.isInteger(sel.item) ? sel.item : citado >= 0 ? citado : lembrado;
+      if (!lista.itens[idx])
+        return { ...askWhich("perfil", labels, `Você tem ${lista.itens.length} ${nounOf(lista.chave)}: ${joinOr(labels.slice(0, 4))}. De qual quer saber ${q.rotulo}?`, { id: q.id, todas: true }, [...labels.slice(0, 3), "Todas"]), perfil: { id: q.id } };
+      const r = answerProfileOne(q, merged(lista.itens[idx]), page);
+      return { ...r, perfil: { id: q.id, item: idx }, contexto: { ...(r.contexto || {}), perfilItem: { chave: lista.chave, indice: idx } } };
+    }
+    return answerProfileOne(q, usuario, page);
+  }
+  function answerProfileOne(q, usuario, page) {
     const r = fillTemplate(q.resposta, usuario, { apelidos: perfil.apelidos, idioma: agente.idioma });
     if (r.faltando.length) return { texto: `Não encontrei ${q.rotulo} nos dados da sua conta.${page.length ? " Você pode conferir direto na página:" : ""}`, acoes: page, perfil: { id: q.id } };
     const nome = firstName(usuario);
@@ -266,6 +503,107 @@ export function createAgent(input) {
       }
     }
     return out;
+  }
+
+  // ---- Versão 0.10 (M6): captura de contato conversacional ----
+  // Nome e e-mail/telefone perguntados um a um, conferidos e colocados no formulário do PRÓPRIO
+  // site (o widget preenche; a pessoa confere e envia). Nada é enviado nem guardado no servidor.
+  const fillable = () => interacoes.filter(canFill);
+  const LEAD_ORDER = ["orcamento", "contato", "agendamento", "reserva", "inscricao", "suporte", "parceria", "newsletter"];
+  const leadSteps = (x) => {
+    const f = fieldsOf(x);
+    return [...(f.nome ? ["nome"] : []), "contato", ...(f.mensagem ? ["mensagem"] : [])];
+  };
+  function askLead(x, lead) {
+    const f = fieldsOf(x);
+    const nome = lead.dados.nome ? lead.dados.nome.split(" ")[0] : "";
+    const textos = {
+      nome: `Combinado! Vou separar os dados para "${x.titulo}". Qual é o seu nome?`,
+      contato: `${nome ? `Obrigado, ${nome}! ` : "Combinado! "}Qual ${f.email && f.telefone ? "e-mail ou telefone (com DDD)" : f.email ? "e-mail" : "telefone (com DDD)"} a equipe pode usar para responder?`,
+      mensagem: `Quer deixar uma mensagem para a equipe? Escreva em poucas palavras ou diga "pular".`,
+    };
+    return { texto: textos[lead.passo], sugestoes: lead.passo === "mensagem" ? ["Pular", "Cancelar"] : ["Cancelar"], contexto: { lead } };
+  }
+  function startLead(x) {
+    return askLead(x, { id: x.id, passo: leadSteps(x)[0], dados: {} });
+  }
+  // Escolhe o formulário: o citado na frase, o da oferta, ou o mais provável (orçamento, contato...).
+  function leadFor(n) {
+    const list = fillable();
+    if (!list.length) return null;
+    const cited = list.filter((x) => n.includes(normalize(x.tipo)) || (x.titulo && n.includes(normalize(x.titulo))));
+    const pool = cited.length ? cited : list;
+    return [...pool].sort((a, b) => LEAD_ORDER.indexOf(a.tipo) - LEAD_ORDER.indexOf(b.tipo))[0];
+  }
+  const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
+  function leadStep(lead, text, n) {
+    const x = interactionById(lead.id);
+    if (!x) return null;
+    if (CANCEL.test(n)) return { r: { texto: "Tudo bem, cancelei. Nada foi enviado nem guardado.", sugestoes: defaultChips() }, intencao: "lead_cancelado" };
+    // Pergunta no meio do caminho: responde normalmente (a captura fica para depois).
+    if (lead.passo !== "mensagem" && QUESTION_LIKE.test(n) && !EMAIL.test(text)) return null;
+    const dados = { ...lead.dados };
+    const f = fieldsOf(x);
+    if (lead.passo === "nome") {
+      const nome = text.trim().replace(/^(meu nome (é|e)|me chamo|eu sou( o| a)?|sou( o| a)?|é|e)\s+/i, "").replace(/[.!]+$/, "").trim();
+      if (!/^[\p{L}][\p{L}' .-]{1,79}$/u.test(nome) || nome.split(/\s+/).length > 6)
+        return { r: { texto: "Não peguei o nome. Pode escrever só o seu nome?", sugestoes: ["Cancelar"], contexto: { lead } }, intencao: "lead_nome" };
+      dados.nome = nome.replace(/\s+/g, " ");
+    } else if (lead.passo === "contato") {
+      const email = f.email && text.match(EMAIL)?.[0];
+      const digits = text.replace(/\D/g, "");
+      const phone = f.telefone && digits.length >= 10 && digits.length <= 13 ? digits : "";
+      if (!email && !phone) {
+        const pede = f.email && f.telefone ? "um e-mail (nome@email.com) ou um telefone com DDD" : f.email ? "um e-mail (nome@email.com)" : "um telefone com DDD, como (11) 98888-7777";
+        return { r: { texto: `Não parece ${pede}. Pode conferir?`, sugestoes: ["Cancelar"], contexto: { lead } }, intencao: "lead_contato" };
+      }
+      if (email) dados.email = email.toLowerCase();
+      if (phone) dados.telefone = phone.length === 11 ? `(${phone.slice(0, 2)}) ${phone.slice(2, 7)}-${phone.slice(7)}` : phone.length === 10 ? `(${phone.slice(0, 2)}) ${phone.slice(2, 6)}-${phone.slice(6)}` : phone;
+    } else if (lead.passo === "mensagem" && !/^(pular|pula|nao|sem mensagem|nada)\b/.test(n)) dados.mensagem = text.trim().slice(0, 500);
+    const steps = leadSteps(x);
+    const next = steps[steps.indexOf(lead.passo) + 1];
+    if (next) return { r: askLead(x, { ...lead, passo: next, dados }), intencao: `lead_${next}` };
+    const nome = dados.nome ? dados.nome.split(" ")[0] : "";
+    const resumo = [dados.nome && `nome ${dados.nome}`, dados.email && `e-mail ${dados.email}`, dados.telefone && `telefone ${dados.telefone}`].filter(Boolean);
+    return {
+      r: {
+        texto: `Pronto${nome ? `, ${nome}` : ""}! Separei ${joinAnd(resumo)} para o formulário "${x.titulo}". Abra a página, confira os campos e clique em enviar: eu não envio nada sozinho.`,
+        acoes: [{ rotulo: "Abrir o formulário preenchido", href: x.link }],
+        formulario: { pagina: x.link, valores: dados },
+      },
+      intencao: "lead_pronto",
+    };
+  }
+
+  // ---- Versão 0.10 (M7): resposta curta/detalhada ----
+  function answerMore(id) {
+    const contato = intencoes.contato?.acoes || [];
+    const c = conteudos.find((x) => x.id === id);
+    const relatedContent = (q) => index.search(q, { tipo: "conteudo", limit: 3 }).find((h) => h.doc.id !== id && strong(h))?.doc.dados;
+    const longer = (cc) =>
+      cc.detalhe
+        ? { texto: `Em mais detalhes, sobre "${cc.titulo}": ${cc.detalhe}`, acoes: cc.link ? [{ rotulo: "Ler o conteúdo completo", href: cc.link }] : [], fonte: cc.id }
+        : { texto: `Esse é o principal de "${cc.titulo}".${cc.link ? " O texto completo, com todos os detalhes, está no link:" : ""}`, acoes: cc.link ? [{ rotulo: "Ler o conteúdo completo", href: cc.link }] : contato, fonte: cc.id };
+    if (c) return longer(c);
+    const f = faq.find((x) => x.id === id);
+    const g = setor.glossario.find((x) => x.id === id);
+    const x = interactionById(id);
+    if (x) return { texto: `${x.resumo}${x.campos.length ? ` Os campos do formulário são: ${joinAnd(x.campos.slice(0, 6))}.` : ""}`, acoes: [{ rotulo: `Ir para ${x.titulo}`.slice(0, 60), href: x.link }], fonte: x.id };
+    const topic = f ? `${f.pergunta} ${f.termos}` : g ? `${g.termo} ${g.sinonimos.join(" ")}` : "";
+    const rc = topic && relatedContent(topic);
+    if (rc) return longer(rc);
+    if (f?.link) return { texto: "A explicação completa está nesta página:", acoes: [{ rotulo: "Saiba mais", href: f.link }], fonte: f.id };
+    if (f || g) return { texto: `Essa é toda a informação que eu tenho sobre isso.${contato.length ? " A equipe pode explicar melhor:" : ""}`, acoes: contato, fonte: id };
+    return null;
+  }
+
+  // ---- Versão 0.10 (M3): fora do escopo do setor ----
+  const foraRe = setor.fora.map((f) => ({ f, re: f.termos.map((t) => ({ t, re: new RegExp(`\\b${OFFER}\\b(?:\\s+${GAP}){0,3}\\s+${escapeRe(normalize(t)).replace(/ /g, "[\\s-]+")}`) })) }));
+  function outOfScope(n) {
+    for (const { f, re } of foraRe)
+      for (const { t, re: r } of re)
+        if (r.test(n) && !index.knows(t)) return { f, t };
+    return null;
   }
 
   function answerIntent(name, turn, usuario) {
@@ -395,19 +733,63 @@ export function createAgent(input) {
     const turn = Number.isInteger(contexto?.voltas) && contexto.voltas >= 0 ? contexto.voltas : 0;
     const done = (r, intencao, confianca = 1) => ({
       texto: r.texto,
+
       acoes: r.acoes || [],
       itens: r.itens || [],
       sugestoes: r.sugestoes || [],
-      intencao,
+      // Pergunta "De qual?" sobre fotos tem sempre o mesmo nome de intenção (0.8).
+      intencao: r.esclarecer && intencao === "galeria" ? "galeria_escolher" : intencao,
       confianca: Math.round(confianca * 100) / 100,
       ...(r.fonte ? { fonte: r.fonte } : {}),
       ...(r.consulta ? { consulta: r.consulta } : {}),
       ...(r.imagens?.length ? { imagens: r.imagens } : {}),
       ...(r.perfil ? { perfil: r.perfil } : {}),
-      contexto: { voltas: turn + 1, ...(r.contexto || {}) },
+      ...(r.cartoes?.length ? { cartoes: r.cartoes } : {}),
+      ...(r.formulario ? { formulario: r.formulario } : {}),
+      // Versão 0.10: memória da conversa (lugar escolhido, item da lista, última resposta).
+      contexto: {
+        voltas: turn + 1,
+        ...(typeof contexto?.grupo === "string" ? { grupo: contexto.grupo } : {}),
+        ...(contexto?.perfilItem ? { perfilItem: contexto.perfilItem } : {}),
+        ...(r.fonte ? { ultimo: r.fonte } : {}),
+        ...(r.contexto || {}),
+      },
     });
     const n = normalize(text);
+    now = { n, contexto: contexto || {} };
     if (!n) return done({ texto: agente.vazio }, "vazio", 0);
+
+    // ---- Versão 0.10: a conversa guiada vem antes de tudo ----
+    // Captura de contato em andamento (nome → e-mail/telefone → mensagem).
+    if (contexto?.lead && typeof contexto.lead.id === "string") {
+      const step = leadStep(contexto.lead, text, n);
+      if (step) return done(step.r, step.intencao, 1);
+    }
+    // Resposta à pergunta "De qual?" (lugar, unidade, pedido).
+    if (contexto?.esclarecer && Array.isArray(contexto.esclarecer.opcoes)) {
+      const picked = resolveWhich(contexto.esclarecer, text, usuario);
+      if (picked) return done(picked.r, picked.intencao, 1);
+    }
+    // Confirmação antes de levar a uma área com login.
+    if (typeof contexto?.confirmar === "string" && interactionById(contexto.confirmar)) {
+      if (YES.test(n)) return done(answerInteraction(interactionById(contexto.confirmar), { confirmado: true }), "interacao", 1);
+      if (NO.test(n)) return done({ texto: "Tudo bem! Quando quiser, é só pedir.", sugestoes: defaultChips() }, "confirmacao_nao", 1);
+    }
+    // Oferta de preencher o formulário junto.
+    if (typeof contexto?.oferta === "string" && canFill(interactionById(contexto.oferta))) {
+      if (YES.test(n)) return done(startLead(interactionById(contexto.oferta)), "lead_inicio", 1);
+      if (NO.test(n)) return done({ texto: "Tudo bem! O link do formulário está logo acima.", sugestoes: defaultChips() }, "confirmacao_nao", 1);
+    }
+    // "Explica melhor": a versão longa da última resposta.
+    if (typeof contexto?.ultimo === "string" && EXPLAIN_MORE.test(n) && n.split(" ").length <= 6) {
+      const more = answerMore(contexto.ultimo);
+      if (more) return done(more, "detalhe", 1);
+    }
+    // "Me liguem", "quero deixar meu contato": captura com o formulário certo do site.
+    if (LEAD.test(n) && !DEFINE.test(n)) {
+      const x = leadFor(n);
+      if (x) return done(startLead(x), "lead_inicio", 0.9);
+    }
 
     // Resposta a uma pergunta do fluxo: escolhe a opção e segue (ou encadeia o próximo passo).
     const pending = typeof contexto?.fluxo === "string" && flowById(contexto.fluxo);
@@ -426,6 +808,9 @@ export function createAgent(input) {
     // Pergunta de perfil com foto ("fotos da minha obra") fica com o perfil, que sabe qual obra.
     const ranked0 = model && OWN.test(n) && perguntasPerfil.length ? classify(model, text)[0] : null;
     const ownProfile = ranked0 && ranked0.intent.startsWith("perfil__") && ranked0.p >= agente.limiar;
+    // Versão 0.10: vídeos e PDFs viram cartões ("vídeo da obra", "memorial descritivo em pdf").
+    const cards = !ownProfile && answerVideoOrFile(n);
+    if (cards) return done(cards, "cartoes", 0.9);
     const media = !ownProfile && answerMedia(text, n, contexto, usuario);
     if (media) return done(media, media.imagens ? "galeria" : "galeria_escolher", media.imagens ? 0.9 : 0.6);
 
@@ -473,6 +858,11 @@ export function createAgent(input) {
     // Frase curta ou social ("oi", "obrigado") fica com a intenção; pergunta com assunto forte na
     // base ou pedido de produto com mais palavras vai para a busca.
     const itemHit = hits[0]?.doc.tipo === "item" && strong(hits[0]);
+    // Versão 0.10 (M3): "vocês vendem carro?" numa clínica: diz que não é com a gente, em vez de
+    // chutar uma página parecida ou responder "sobre o assistente".
+    const fora = setor.fora.length && !itemHit && !strong(best) && (!confident || GENERIC_INTENTS.has(top.intent)) && outOfScope(n);
+    if (fora)
+      return done({ texto: `Isso não é algo que ${agente.site} oferece: aqui o assunto é ${setor.nome.replace(/\s*\(.*\)/, "").toLowerCase()}. Posso ajudar com outra coisa?`, sugestoes: defaultChips(), acoes: [] }, "fora_do_escopo", 0.8);
     const intentFirst = confident && (!strong(best) || (top.p >= 0.9 && words <= 3)) && !(asksCatalog && words > 3) && !itemHit;
     if (intentFirst || (confident && /^(fluxo|consulta|perfil)__/.test(top.intent) && !itemHit)) return done(answerIntent(top.intent, turn, usuario), top.intent, top.p);
     // Pedido de compra explícito ("quero um café", "até R$ 50") tenta o catálogo antes da base.
@@ -515,7 +905,7 @@ export function createAgent(input) {
   }
 
   // ---- Versão 0.8: camada de conversa (mais natural, sem IA) ----
-  const MISS = new Set(["nao_entendi", "voce_quis_dizer", "vazio", "mais_sem_contexto", "nenhuma_opcao", "galeria_escolher"]);
+  const MISS = new Set(["nao_entendi", "voce_quis_dizer", "vazio", "mais_sem_contexto", "nenhuma_opcao", "galeria_escolher", "fora_do_escopo"]);
   const isAnswer = (r) => !MISS.has(r.intencao) && !String(r.intencao).endsWith("-provavel") && r.confianca >= 0.5;
   // Perguntas relacionadas (como os assistentes de IA sugerem): outras FAQs perto do assunto.
   const related = (r) => {
@@ -537,7 +927,8 @@ export function createAgent(input) {
     const n = normalize(text);
     let r = null;
     // Mais de uma pergunta na mesma frase: responde cada uma, na ordem, com o assunto citado.
-    const parts = !(typeof contexto?.fluxo === "string" && contexto.fluxo) && splitQuestions(text);
+    const guided = (typeof contexto?.fluxo === "string" && contexto.fluxo) || contexto?.lead || contexto?.esclarecer;
+    const parts = !guided && splitQuestions(text);
     if (parts) {
       const answers = parts.map((p) => replyOne(p, contexto, opcoes));
       const distinct = new Set(answers.map((a) => a.fonte || a.intencao)).size === answers.length;
@@ -596,9 +987,22 @@ export function createAgent(input) {
     const texto = nome ? agente.saudacao.replace(/^(oi|olá|ola|bem-vindo|bem-vinda)([!,.]?)\s*/i, "") : agente.saudacao;
     return { texto: nome ? `Oi, ${nome}! ${texto}` : texto, sugestoes: defaultChips() };
   };
-  const perfilReply = (id, usuario) => {
+  // sel (0.10): { item, todas } quando a pergunta já escolheu um item da lista.
+  const perfilReply = (id, usuario, sel = {}) => {
     const q = profileById(id);
-    return q ? { acoes: [], itens: [], sugestoes: [], ...answerProfile(q, usuario), intencao: `perfil__${id}`, confianca: 1 } : null;
+    if (!q) return null;
+    const r = answerProfile(q, usuario, sel || {});
+    return { acoes: [], itens: [], sugestoes: [], ...r, intencao: `perfil__${id}`, confianca: 1 };
   };
-  return { reply, knowledge, problems, saudacao, perfil: perfilReply, recursos: knowledge.agente.recursos };
+  // Versão 0.10 (M2): mensagem proativa da página atual (o widget mostra uma por sessão).
+  const samePage = (a, b) => {
+    const c = (p) => `/${String(p || "").split(/[?#]/)[0].replace(/^\/+/, "")}`.replace(/\/index\.html?$/i, "/").replace(/\.html?$/i, "").replace(/\/+$/, "") || "/";
+    return c(a) === c(b);
+  };
+  const proativa = (caminho) => {
+    if (!agente.proativa) return null;
+    const p = (agente.proativas || []).find((x) => samePage(x.pagina, caminho));
+    return p ? { texto: p.texto, sugestoes: p.sugestoes, aposSeg: p.aposSeg } : null;
+  };
+  return { reply, knowledge, problems, saudacao, perfil: perfilReply, proativa, recursos: knowledge.agente.recursos };
 }
