@@ -53,8 +53,9 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
   projeto, raio X, **funcionalidades com checkbox** (catálogo, busca, dados da conta, perfil,
   formulários, fotos, conversas em etapas; as ações críticas ficam sempre bloqueadas), aparência
   com prévia, instalação com progresso e conversa de teste. Depois de instalar, ele **continua
-  aberto** para a etapa 2 (treino assistido, observação e editor da base). No Windows não abre
-  terminal. Ver [docs/INSTALADOR.md](docs/INSTALADOR.md).
+  aberto** para a etapa 2 (treino assistido, observação e editor da base). Se o projeto já tem
+  um agente criado por ele, oferece **desinstalar** (tira o widget das páginas e apaga a pasta do
+  agente, guardando a base antes). No Windows não abre terminal. Ver [docs/INSTALADOR.md](docs/INSTALADOR.md).
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 
@@ -130,6 +131,7 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 | Comando | O que faz |
 | --- | --- |
 | `instalador [pasta]` | (0.9) Instalador visual numa janela: etapas com instruções, funcionalidades com checkbox, aparência, instalação, teste e etapa 2 (é o que o `agente-instalador` abre) |
+| `desinstalar [pasta]` | (0.9) Desfaz a instalação: widget fora das páginas, pasta do agente apagada, base guardada. `--sim` confirma, `--tudo` apaga também `agente-gerador/` |
 | `assistente [pasta]` | Guiado com perguntas sim/não, do raio X ao teste no navegador (é o que o executável roda). `--sim` aceita os padrões |
 | `criar <pasta>` | Tudo de uma vez: analisar, gerar, instalar e avaliar |
 | `analisar <pasta>` | Só o raio X (`agente-gerador/relatorio.json`) |

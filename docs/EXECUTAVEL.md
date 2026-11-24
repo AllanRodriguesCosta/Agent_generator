@@ -65,6 +65,12 @@ Gemini, que só é oferecido se você tiver configurado `GEMINI_API_KEY`.
 **React, Next.js, Vue, Angular e outros frameworks:** o executável instala o agente, mas não mexe
 no código-fonte. A linha a colar no layout fica em `agente-gerador/COMO-LIGAR.txt`.
 
+## Desinstalar
+
+Abra o `agente-instalador` na mesma pasta: ele mostra que já existe um agente e oferece
+**Desinstalar o agente**. Pelo terminal: `agente-gerador-windows.exe desinstalar . --sim`.
+Detalhes em [INSTALADOR.md](INSTALADOR.md#desinstalar).
+
 ## Rodar de novo
 
 Rode de novo quando o site mudar. Se a base já existe, ele pergunta se você quer **regerar do

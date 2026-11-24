@@ -212,3 +212,10 @@ details summary { cursor: pointer; font-weight: 600; }
 .escondido { display: none !important; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 .cartao > * + h3 { margin-top: 14px; }
+.btn.pri.vermelho { background: var(--erro); box-shadow: 0 4px 14px rgba(180, 35, 24, 0.25); }
+.btn.pri.vermelho:not(:disabled):hover { background: #912018; }
+.btn.perigo:not(:disabled):hover { background: var(--erro-claro); }
+.destaque.ja { border-color: #c4b5fd; background: #fbf9ff; }
+.destaque.ja .conteudo { gap: 10px; }
+.destaque.ja span { display: block; }
+.cartao > .linha { margin-top: 12px; }

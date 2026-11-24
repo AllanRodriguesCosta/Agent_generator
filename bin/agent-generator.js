@@ -13,6 +13,7 @@ import { generateKnowledge } from "../src/generator/index.js";
 import { buildPrompt, parseAiAnswer, mergeAi, askGemini } from "../src/generator/ai.js";
 import { install, detectTarget, injectTags, readKnowledge, writeKnowledge, snippetFor, entryPages } from "../src/installer/index.js";
 import { runAssistant, staticRoot, openBrowser } from "../src/cli/assistente.js";
+import { planUninstall, runUninstall } from "../src/installer/uninstall.js";
 import { summarize, applyObservation, observationText } from "../src/observe/learn.js";
 import { findUpstream, runSession } from "../src/observe/session.js";
 import { applyCorrection, trainingBase, trainingText } from "../src/train/apply.js";
@@ -27,7 +28,7 @@ import { USER_AGENT } from "../src/crawler/index.js";
 import { buildDomain, enrichFromObservation, sectorKnowledge, SECTOR_IDS } from "../src/domain/index.js";
 import { detectSector, textsFromReport } from "../src/domain/detect.js";
 
-const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", auto: "assistente", wizard: "assistente", installer: "instalador", gui: "instalador", janela: "instalador", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
+const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", uninstall: "desinstalar", remover: "desinstalar", auto: "assistente", wizard: "assistente", installer: "instalador", gui: "instalador", janela: "instalador", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
 const WORK = "agente-gerador";
 
 export function parseArgs(argv) {
@@ -56,6 +57,10 @@ Comandos:
   assistente [pasta]       Guiado, com perguntas de sim/não: raio X, base, instalação, widget nas
                            páginas, avaliação e teste no navegador. É o que o executável faz
                            com duplo clique. Sem pasta, usa a pasta atual.
+  desinstalar [pasta]      (0.9) Encontra o agente criado aqui e desfaz a instalação: tira a linha
+                           do widget das páginas e apaga a pasta do agente (a base é guardada antes
+                           em agente-gerador/backup). Pede confirmação; --sim confirma; --tudo
+                           apaga também agente-gerador/. O instalador visual oferece o mesmo.
   criar <pasta>            Tudo de uma vez: analisar + gerar + instalar + avaliar
   analisar <pasta>         Raio X do projeto (agente-gerador/relatorio.json)
   gerar <pasta>            Cria a base de conhecimento a partir do relatório
@@ -102,7 +107,8 @@ Opções:
   --variacoes         (avaliar) Testa também variações geradas: sem acento, erro de digitação, informal
   --html              (avaliar) Grava agente-gerador/avaliacao.html (relatório para abrir no navegador)
   --porta <n>         Porta do comando servir (padrão 5173)
-  --janela           (instalador) Sem terminal: encerra sozinho 3 min depois que a janela fecha
+  --tudo              (desinstalar) Apaga também a pasta de trabalho agente-gerador/
+  --janela            (instalador) Sem terminal: encerra sozinho 3 min depois que a janela fecha
   --sim               (assistente) Responde o padrão a todas as perguntas, sem abrir navegador
   --sem-pausa         (assistente) Não espera Enter no final
   --url <endereço>    (observar/treinar) Site já rodando, ex.: http://localhost:3000
@@ -569,6 +575,30 @@ async function cmdEditar(ctx, io) {
   return editor;
 }
 
+// Versão 0.9: desinstalar. Mostra o que vai sair e pede confirmação (ou --sim).
+function uninstallPlanText(plan) {
+  if (!plan.instalado) return "Não encontrei um agente criado pelo agent-generator neste projeto.";
+  return [
+    "Agente encontrado neste projeto. A desinstalação vai:",
+    ...(plan.pasta ? [`  - apagar a pasta ${plan.pasta.rel}/ (${plan.pasta.arquivos} arquivos; a base de conhecimento é guardada antes)`] : []),
+    ...(plan.paginas.length ? [`  - tirar a linha do widget de: ${plan.paginas.join(", ")}`] : []),
+    `  - ${plan.trabalho.existe ? `${plan.trabalho.rel}/ ${"fica (relatórios e backups)"}; com --tudo, é apagada também` : "sem pasta de trabalho"}`,
+    ...(plan.referencias.length ? [`  ! Linha colada à mão (remova você): ${plan.referencias.join(", ")}`] : []),
+  ].join("\n");
+}
+async function cmdDesinstalar(ctx, io) {
+  const plan = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
+  if (!ctx.flags.json) io.print(uninstallPlanText(plan));
+  if (!plan.instalado) return { plan, feito: false };
+  const ok = ctx.flags.sim || (io.question && (await io.ask("\nDesinstalar o agente deste projeto?", false)));
+  if (!ok) {
+    if (!ctx.flags.json) io.print(io.question ? "Nada foi alterado." : "Nada foi alterado. Para confirmar sem perguntas, use --sim.");
+    return { plan, feito: false };
+  }
+  const r = await runUninstall(ctx.project, plan, { apagarTrabalho: Boolean(ctx.flags.tudo) });
+  return { plan, feito: true, ...r };
+}
+
 async function cmdAssistente(ctx) {
   const interactive = Boolean(process.stdin.isTTY) && !ctx.flags.sim;
   const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
@@ -590,6 +620,8 @@ async function cmdAssistente(ctx) {
     gemini: () => cmdGemini(ctx),
     conversar: () => cmdConversar(ctx, [], rl),
     observar: () => cmdObservar(ctx, io),
+    planoDesinstalar: () => planUninstall(ctx.project, { config: ctx.config, work: ctx.work }),
+    desinstalar: (plan) => runUninstall(ctx.project, plan),
     async servir(root) {
       const port = await listenFree(staticServer(root), Number(ctx.flags.porta) || 5173);
       return `http://localhost:${port}/`;
@@ -649,7 +681,21 @@ async function cmdInstalador(flags, pasta) {
       const has = async (f) => Boolean(await stat(join(ctx.project, f)).catch(() => null));
       const info = { pasta: ctx.project, temIndex: await has("index.html"), temPackage: await has("package.json"), temBase: false, jaInstalado: Boolean(ctx.config.destino) };
       if (ctx.config.destino) info.temBase = Boolean(await stat(join(resolve(ctx.project, ctx.config.destino), "conhecimento", "agente.json")).catch(() => null));
+      // Versão 0.9: agente criado por nós já instalado aqui? Então a janela oferece desinstalar.
+      const plan = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
+      Object.assign(info, { instalado: plan.instalado, pastaAgente: plan.pasta?.rel || "" });
+      if (plan.pasta) info.temBase = true;
       return { ctx, info };
+    },
+    async planoDesinstalar(ctx) {
+      const p = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
+      return { instalado: p.instalado, pasta: p.pasta && { rel: p.pasta.rel, arquivos: p.pasta.arquivos }, paginas: p.paginas, referencias: p.referencias, trabalho: { rel: p.trabalho.rel, existe: p.trabalho.existe } };
+    },
+    async desinstalar(ctx, escolhas, log) {
+      log("Conferindo o que existe do agente...", 5);
+      const plan = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
+      if (!plan.instalado) throw new Error("Não há agente instalado nesta pasta.");
+      return runUninstall(ctx.project, plan, { apagarTrabalho: escolhas.apagarTrabalho === true, log });
     },
     async analisar(ctx, log, { setor } = {}) {
       log("Lendo os arquivos do projeto (só leitura)...", 10);
@@ -922,7 +968,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (command === "site") return cmdSite(_[1], _[2], flags);
   if (command === "instalador") return cmdInstalador(flags, _[1] || process.cwd());
-  const ctx = await context(["assistente", "observar", "treinar", "aprender", "editar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
+  const ctx = await context(["assistente", "observar", "treinar", "aprender", "editar", "desinstalar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
   switch (command) {
     case "assistente": {
       const r = await cmdAssistente(ctx);
@@ -967,6 +1013,17 @@ export async function main(argv = process.argv.slice(2)) {
         return 0;
       }
       return null;
+    }
+    case "desinstalar": {
+      const rl = process.stdin.isTTY && !flags.sim ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+      const io = makeIo(ctx, rl);
+      try {
+        const r = await cmdDesinstalar(ctx, io);
+        print(ctx, r, r.feito ? `\nPronto:\n${r.resumo.map((x) => `- ${x}`).join("\n")}` : "");
+      } finally {
+        rl?.close();
+      }
+      return 0;
     }
     case "perfil": {
       const r = await cmdPerfil(ctx);

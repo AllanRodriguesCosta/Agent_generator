@@ -101,6 +101,12 @@ jobs:
           grep -q '"catalogo": false' "$SITE/agente/conhecimento/agente.json"
           grep -q "Assistente CI" "$SITE/agente/conhecimento/agente.json"
           grep -q "agente: agent-generator" "$SITE/index.html"
+          # Desinstalar (0.9): a linha do widget sai das páginas e a pasta do agente é apagada.
+          ( cd "$SITE" && "./$EXE" desinstalar . --sim > desinstalar.txt 2>&1 ) || { cat "$SITE/desinstalar.txt"; exit 1; }
+          cat "$SITE/desinstalar.txt"
+          test ! -d "$SITE/agente"
+          ! grep -q "agente: agent-generator" "$SITE/index.html"
+          ls "$SITE"/agente-gerador/backup/conhecimento-desinstalado-*.json
           # O instalador para duplo clique existe; no Windows ele é programa de janela (sem terminal).
           ls dist/agente-instalador-*
           if [ "$RUNNER_OS" = "Windows" ]; then

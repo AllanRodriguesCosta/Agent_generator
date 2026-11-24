@@ -37,7 +37,7 @@ const publicSite = (s) => s && { url: s.url, origem: s.origem };
 /**
  * ops (do CLI): abrir(pasta) -> { ctx, info }; analisar(ctx, log, { setor }); instalar(ctx, escolhas, log);
  * testar(ctx, mensagem, contexto); abrirSite(ctx) -> { url, stop }; sessao(ctx, modo, opcoes, io) -> resultado;
- * editor(ctx) -> { url, stop }; acerto(ctx) -> número.
+ * editor(ctx) -> { url, stop }; acerto(ctx) -> número; planoDesinstalar(ctx); desinstalar(ctx, { apagarTrabalho }, log).
  * Opções: pasta (inicial), port, listen(server, port), vivoMs (sem sinal da janela por esse tempo
  * e sem treino aberto -> encerra), onFim(motivo), versao.
  */
@@ -137,6 +137,24 @@ export async function startInstaller({ ops, pasta = "", port = 4730, listen, viv
       const ctx = needCtx();
       if (!state.analise) throw Object.assign(new Error("Faça o raio X antes de instalar."), { status: 400 });
       return { tarefa: jobView(startJob("instalar", async (log) => (state.instalacao = await ops.instalar(ctx, d || {}, log)))) };
+    },
+    // Versão 0.9: desinstalar o agente encontrado na pasta.
+    "GET /api/desinstalar": async () => ops.planoDesinstalar(needCtx()),
+    "POST /api/desinstalar": async (d) => {
+      const ctx = needCtx();
+      if (running()) throw busy();
+      state.site?.stop?.();
+      state.site = null;
+      await Promise.resolve(state.editor?.stop?.()).catch(() => {});
+      state.editor = null;
+      const job = startJob("desinstalar", async (log) => {
+        const r = await ops.desinstalar(ctx, { apagarTrabalho: d.apagarTrabalho === true }, log);
+        // A pasta volta a ser "sem agente": recarrega o contexto e esquece o raio X/instalação.
+        const again = await ops.abrir(ctx.project || state.info?.pasta);
+        Object.assign(state, { ctx: again.ctx, info: again.info, analise: null, instalacao: null });
+        return r;
+      });
+      return { tarefa: jobView(job) };
     },
     "GET /api/tarefa": async () => ({ tarefa: jobView(state.job) }),
     "POST /api/testar": async (d) => ops.testar(needCtx(), String(d.mensagem || "").slice(0, 500), d.contexto && typeof d.contexto === "object" ? d.contexto : {}),

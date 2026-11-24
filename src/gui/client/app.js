@@ -5,6 +5,15 @@
   var TOKEN = new URLSearchParams(location.search).get("t") || "";
   var $ = function (id) { return document.getElementById(id); };
 
+  // append que ignora null/false (partes opcionais das telas).
+  function add(parent) {
+    for (var i = 1; i < arguments.length; i++) {
+      var k = arguments[i];
+      if (k != null && k !== false) parent.append(k);
+    }
+    return parent;
+  }
+
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
     Object.keys(attrs || {}).forEach(function (k) {
@@ -18,7 +27,7 @@
     });
     [].concat(kids == null ? [] : kids).forEach(function (c) {
       if (c == null || c === false) return;
-      n.append(c.nodeType ? c : document.createTextNode(String(c)));
+      add(n, c.nodeType ? c : document.createTextNode(String(c)));
     });
     return n;
   }
@@ -58,7 +67,7 @@
   function falha(e) { status(e.message || String(e), true); }
 
   // ---------- etapas ----------
-  var ETAPAS = [
+  var INSTALAR = [
     {
       nome: "Boas-vindas",
       dica: "o que vai acontecer",
@@ -167,13 +176,125 @@
     },
   ];
 
+  // Versão 0.9: desinstalar o agente encontrado na pasta (fluxo próprio, com 2 etapas).
+  var DESINSTALAR = [
+    {
+      nome: "Revisar",
+      dica: "o que vai sair",
+      titulo: "Desinstalar o agente",
+      sub: "Confira o que vai sair do projeto. A base de conhecimento é guardada antes, porque pode ter sido treinada por você.",
+      passos: [
+        "Confira a lista do que será removido do projeto.",
+        "Marque Apagar também a pasta agente-gerador/ só se não quiser guardar relatórios e backups (nesse caso a base vai para um arquivo na raiz do projeto).",
+        "Clique em Desinstalar e confirme. Para desistir, clique em Voltar ao instalador.",
+      ],
+      montar: telaDesRevisar,
+      botao: "Desinstalar",
+      perigo: true,
+      acao: desinstalar,
+      pode: function () { return Boolean(S.plano && S.plano.instalado); },
+    },
+    {
+      nome: "Desinstalação",
+      dica: "remoção e resumo",
+      titulo: "Desinstalação",
+      sub: "O instalador remove o widget das páginas e a pasta do agente.",
+      passos: [
+        "Aguarde a remoção terminar.",
+        "Se aparecer a lista \"Linha colada à mão\", abra cada arquivo e apague a linha do widget (o instalador não mexe em código que ele não escreveu).",
+        "Pronto. Para instalar de novo, clique em Instalar de novo ou feche o instalador.",
+      ],
+      montar: telaDesExecutar,
+      pode: function () { return true; },
+    },
+  ];
+  var ETAPAS = INSTALAR;
+
+  function entrarDesinstalar() {
+    if (ocupado()) return;
+    ETAPAS = DESINSTALAR;
+    S.fluxo = "desinstalar";
+    S.plano = null;
+    S.desinstalacao = null;
+    S.max = 0;
+    ir(0);
+  }
+  function voltarInstalar(inicio) {
+    ETAPAS = INSTALAR;
+    S.fluxo = "instalar";
+    S.max = inicio ? 0 : Math.max(S.max, 1);
+    if (inicio) S.escolhas = { recursos: {}, perfilFonte: "", agente: {}, inserir: true, regerar: false, gemini: false };
+    recarregar().then(function () { ir(inicio ? 0 : 1); });
+  }
+  function cartaoJaInstalado(info) {
+    return el("div", { class: "cartao destaque ja" }, [
+      el("div", { class: "ico", "aria-hidden": "true", text: "✓" }),
+      el("div", { class: "conteudo" }, [
+        el("div", {}, [el("strong", { text: "Já existe um agente criado pelo Agent Generator neste projeto" }), el("span", { text: info.pastaAgente ? "Pasta do agente: " + info.pastaAgente + "/. " : "" }), el("span", { text: "Você pode atualizar/reconfigurar (siga com Próximo; o que você editou é mantido) ou desinstalar." })]),
+        el("div", { class: "linha" }, [el("button", { class: "btn perigo", type: "button", text: "Desinstalar o agente", onclick: entrarDesinstalar })]),
+      ]),
+    ]);
+  }
+
+  function telaDesRevisar(c) {
+    var area = el("div", { class: "conteudo" }, el("p", { class: "muted", text: "Mapeando o agente no projeto…" }));
+    add(c, area);
+    api("GET", "/api/desinstalar").then(function (p) {
+      S.plano = p;
+      area.textContent = "";
+      if (!p.instalado) {
+        add(area, el("p", { class: "aviso info", text: "Não há agente criado pelo Agent Generator nesta pasta. Nada para desinstalar." }), el("button", { class: "btn sec", type: "button", text: "Voltar ao instalador", onclick: function () { voltarInstalar(false); } }));
+        atualizarBotoes();
+        return;
+      }
+      var itens = [];
+      if (p.pasta) itens.push(el("li", {}, ["Apagar a pasta ", el("strong", { text: p.pasta.rel + "/" }), " (" + p.pasta.arquivos + " arquivos: núcleo, widget e base de conhecimento)"]));
+      if (p.paginas.length) itens.push(el("li", { text: "Tirar a linha do widget de " + p.paginas.length + " página(s): " + p.paginas.join(", ") }));
+      itens.push(el("li", { text: "Guardar a base de conhecimento antes (dá para reinstalar com ela)" }));
+      var marcado = Boolean(S.apagarTrabalho);
+      var cb = el("input", { type: "checkbox", id: "des-tudo" });
+      cb.checked = marcado;
+      var card = el("label", { class: "opcao" + (marcado ? " marcada" : ""), for: "des-tudo" }, [cb, el("span", { class: "t", text: "Apagar também a pasta " + p.trabalho.rel + "/" }), el("span", { class: "d", text: "Relatórios, avaliações e backups do Agent Generator. Desmarcado, ela fica com um registro da desinstalação e cópias das páginas." })]);
+      cb.addEventListener("change", function () { S.apagarTrabalho = cb.checked; card.classList.toggle("marcada", cb.checked); });
+      add(area,
+        el("div", { class: "cartao" }, [el("h3", { text: "O que a desinstalação vai fazer" }), el("ul", { class: "checks" }, itens)]),
+        p.trabalho.existe ? card : null,
+        p.referencias.length ? el("div", { class: "aviso alerta" }, [el("strong", { text: "Linha colada à mão: " }), "estes arquivos citam o widget e não foram alterados pelo instalador, então ele não mexe neles. Depois, apague a linha você mesmo: " + p.referencias.join(", ")]) : null,
+        el("div", { class: "linha" }, [el("button", { class: "btn sec", type: "button", text: "Voltar ao instalador", onclick: function () { voltarInstalar(false); } })]),
+      );
+      atualizarBotoes();
+    }).catch(falha);
+  }
+  function desinstalar() {
+    if (!confirm("Desinstalar o agente deste projeto? O widget sai das páginas e a pasta do agente é apagada (a base é guardada antes).")) return;
+    S.max = 1;
+    ir(1);
+  }
+  function telaDesExecutar(c) {
+    var area = el("div", { class: "cartao" });
+    add(c, area);
+    if (S.desinstalacao) return mostrarDes(area, S.desinstalacao);
+    add(area, el("h3", { text: "Desinstalando…" }));
+    var ver = progresso(area);
+    api("POST", "/api/desinstalar", { apagarTrabalho: Boolean(S.apagarTrabalho) })
+      .then(function () { atualizarBotoes(); return acompanhar(ver); })
+      .then(function (r) { S.desinstalacao = r; return recarregar().then(function () { mostrarDes(area, r); status("Agente desinstalado."); }); })
+      .catch(function (e) { falha(e); add(area, el("p", { class: "aviso erro", text: e.message })); });
+  }
+  function mostrarDes(area, r) {
+    area.textContent = "";
+    add(area, el("h3", {}, ["Agente desinstalado ", el("span", { class: "selo ok", text: "Concluído" })]), el("ul", { class: "checks" }, r.resumo.map(function (x) { return el("li", { text: x }); })));
+    if (r.pendentes && r.pendentes.length) add(area, el("p", { class: "aviso alerta", text: "Falta você apagar a linha do widget em: " + r.pendentes.join(", ") }));
+    add(area, el("div", { class: "linha" }, [el("button", { class: "btn sec", type: "button", text: "Instalar de novo", onclick: function () { S.desinstalacao = null; voltarInstalar(true); } })]));
+  }
+
   // ---------- navegação ----------
   function desenharLado() {
     var ol = $("etapas");
     ol.textContent = "";
     ETAPAS.forEach(function (e, i) {
       var cls = i === S.etapa ? "atual" : i < S.max || (i < S.etapa) ? "feita" : "";
-      ol.append(
+      add(ol,
         el("li", { class: cls }, [
           el("button", { type: "button", disabled: i > S.max, "aria-current": i === S.etapa ? "step" : null, onclick: function () { ir(i); } }, [
             el("span", { class: "bolinha" }, el("span", { text: String(i + 1) })),
@@ -186,16 +307,16 @@
   function desenharInstrucoes(e) {
     var box = $("instrucoes");
     box.textContent = "";
-    box.append(el("div", { class: "ico", "aria-hidden": "true", text: "i" }), el("h2", { text: "O que fazer nesta etapa" }), el("ol", {}, e.passos.map(function (p) { return el("li", { text: p }); })));
+    add(box, el("div", { class: "ico", "aria-hidden": "true", text: "i" }), el("h2", { text: "O que fazer nesta etapa" }), el("ol", {}, e.passos.map(function (p) { return el("li", { text: p }); })));
   }
   function atualizarBotoes() {
     var e = ETAPAS[S.etapa];
     var ultimo = S.etapa === ETAPAS.length - 1;
-    $("voltar").disabled = S.etapa === 0 || ocupado();
+    $("voltar").disabled = S.etapa === 0 || ocupado() || (S.fluxo === "desinstalar" && Boolean(S.desinstalacao));
     var prox = $("proximo");
-    prox.textContent = ultimo ? "Fechar instalador" : "Próximo";
+    prox.textContent = ultimo ? "Fechar instalador" : e.botao || "Próximo";
     prox.disabled = ocupado() || (!ultimo && !e.pode());
-    prox.className = ultimo ? "btn sec" : "btn pri";
+    prox.className = ultimo ? "btn sec" : e.perigo ? "btn pri vermelho" : "btn pri";
   }
   function ocupado() {
     var t = S.estado && S.estado.tarefa;
@@ -222,6 +343,7 @@
   $("proximo").addEventListener("click", function () {
     if (S.etapa === ETAPAS.length - 1) return fechar();
     if (!ETAPAS[S.etapa].pode()) return;
+    if (ETAPAS[S.etapa].acao) return ETAPAS[S.etapa].acao();
     S.max = Math.max(S.max, S.etapa + 1);
     ir(S.etapa + 1);
   });
@@ -254,7 +376,7 @@
   function progresso(alvo) {
     var barra = el("div", { class: "barra indeterminada" }, el("i"));
     var lista = el("ul", { class: "registro" });
-    alvo.append(barra, lista);
+    add(alvo, barra, lista);
     return function (t) {
       if (!t) return;
       if (t.pct > 0) {
@@ -262,13 +384,14 @@
         barra.firstChild.style.width = t.pct + "%";
       }
       lista.textContent = "";
-      t.passos.forEach(function (p) { lista.append(el("li", { text: p.texto })); });
+      t.passos.forEach(function (p) { add(lista, el("li", { text: p.texto })); });
     };
   }
 
   // ---------- telas ----------
   function telaBoasVindas(c) {
-    c.append(
+    if (S.estado && S.estado.info && S.estado.info.instalado) add(c, cartaoJaInstalado(S.estado.info));
+    add(c,
       el("div", { class: "grade" }, [
         destaque("★", "Sem custo e sem IA obrigatória", "O agente roda no navegador de quem visita o site, com a base de conhecimento criada a partir do próprio projeto."),
         destaque("⟲", "Com cópia de segurança", "Tudo que o instalador alterar fica guardado em agente-gerador/backup. Dá para desfazer."),
@@ -298,13 +421,14 @@
       checks.textContent = "";
       if (!info) return;
       var ok = info.temIndex || info.temPackage;
-      checks.append(
+      add(checks,
         el("ul", { class: "checks" }, [
           el("li", { class: info.temIndex ? "" : "nao", text: info.temIndex ? "index.html encontrado (site HTML)" : "Sem index.html na raiz" }),
           el("li", { class: info.temPackage ? "" : "nao", text: info.temPackage ? "package.json encontrado (projeto Node/React/Vite...)" : "Sem package.json" }),
           el("li", { class: info.temBase ? "" : "nao", text: info.temBase ? "Já existe um agente instalado aqui: a base atual será mantida (a não ser que você peça para regerar)" : "Nenhum agente instalado ainda" }),
         ]),
         ok ? null : el("p", { class: "aviso alerta", text: "Não parece a pasta raiz de um site. Dá para continuar, mas confira o caminho." }),
+        info.instalado ? cartaoJaInstalado(info) : null,
       );
     }
     function usar() {
@@ -316,7 +440,7 @@
     }
     botao.addEventListener("click", usar);
     input.addEventListener("keydown", function (ev) { if (ev.key === "Enter") usar(); });
-    c.append(el("div", { class: "cartao" }, [el("label", { class: "campo", for: "pasta" }, ["Pasta do projeto", el("span", { class: "ajuda", text: "Caminho completo, ex.: C:\\Users\\voce\\Documents\\meu-site" })]), el("div", { class: "linha" }, [input, botao]), el("div", { style: null }, checks)]));
+    add(c, el("div", { class: "cartao" }, [el("label", { class: "campo", for: "pasta" }, ["Pasta do projeto", el("span", { class: "ajuda", text: "Caminho completo, ex.: C:\\Users\\voce\\Documents\\meu-site" })]), el("div", { class: "linha" }, [input, botao]), el("div", { style: null }, checks)]));
     mostrar(e.info);
     if (!e.info && input.value) usar();
   }
@@ -324,24 +448,24 @@
   function telaRaioX(c) {
     var area = el("div", { class: "cartao" });
     var res = el("div", { class: "conteudo" });
-    c.append(area, res);
+    add(c, area, res);
     function rodar(setor) {
       if (!area.isConnected) c.prepend(area);
       area.textContent = "";
       res.textContent = "";
-      area.append(el("h3", { text: "Lendo o projeto…" }));
+      add(area, el("h3", { text: "Lendo o projeto…" }));
       var ver = progresso(area);
       api("POST", "/api/analisar", setor !== undefined ? { setor: setor } : {})
         .then(function () { atualizarBotoes(); return acompanhar(ver); })
         .then(function () { return recarregar(); })
         .then(function () { area.textContent = ""; mostrar(); S.max = Math.max(S.max, 3); desenharLado(); })
-        .catch(function (e) { falha(e); area.append(el("p", { class: "aviso erro", text: e.message })); });
+        .catch(function (e) { falha(e); add(area, el("p", { class: "aviso erro", text: e.message })); });
     }
     function mostrar() {
       var a = S.estado.analise;
       var r = a.resumo;
       area.remove();
-      res.append(
+      add(res,
         el("div", { class: "numeros" }, [num(r.paginas, "páginas"), num(r.rotas, "rotas"), num(r.formularios, "formulários"), num(r.faq, "perguntas frequentes"), num(r.itensCatalogo, "itens de catálogo")]),
         el("div", { class: "cartao" }, [
           el("h3", { text: a.site || "Seu site" }),
@@ -356,8 +480,8 @@
     }
     function cartaoSetor(a) {
       var sel = el("select", { id: "setor", "aria-label": "Setor do negócio" });
-      sel.append(el("option", { value: "", text: "Detectar sozinho (" + a.setor.detectado + ")" }));
-      a.setores.forEach(function (id) { sel.append(el("option", { value: id, text: id, selected: a.setor.escolhido === id })); });
+      add(sel, el("option", { value: "", text: "Detectar sozinho (" + a.setor.detectado + ")" }));
+      a.setores.forEach(function (id) { add(sel, el("option", { value: id, text: id, selected: a.setor.escolhido === id })); });
       var top = a.setor.ranking[0];
       return el("div", { class: "cartao" }, [
         el("h3", { text: "Tipo de negócio (setor)" }),
@@ -396,12 +520,12 @@
         card.classList.toggle("marcada", cb.checked);
         if (extra) extra.classList.toggle("escondido", !cb.checked);
       });
-      lista.append(card);
+      add(lista, card);
     });
-    c.append(lista);
+    add(c, lista);
     var cr = a.criticas;
     var cats = Object.keys(cr.porCategoria).map(function (k) { return k + ": " + cr.porCategoria[k]; }).join(" · ");
-    c.append(
+    add(c,
       el("div", { class: "cartao" }, [
         el("h3", {}, ["Ações críticas do site ", el("span", { class: "selo ok", text: "Sempre bloqueadas" })]),
         el("p", { text: cr.total ? "O raio X encontrou " + cr.total + " ação(ões) sensível(is) no site (" + cats + "). O agente nunca envia formulários, faz pagamentos, troca senhas ou altera dados: ele só explica e mostra o caminho." : "Nenhuma ação sensível (pagamento, login, exclusão) foi encontrada. Mesmo assim, o agente nunca envia formulários nem altera dados." }),
@@ -420,7 +544,7 @@
       previa.className = "previa" + (g.posicao === "esquerda" ? " esquerda" : "");
       var bot = el("div", { class: "botao", "aria-hidden": "true" }, el("span", { text: "💬" }));
       bot.style.background = g.cor;
-      previa.append(el("div", { class: "bolha" }, [el("b", { text: g.nome }), g.saudacao]), bot);
+      add(previa, el("div", { class: "bolha" }, [el("b", { text: g.nome }), g.saudacao]), bot);
     }
     var nome = el("input", { type: "text", id: "ag-nome", value: g.nome, maxlength: "80" });
     nome.addEventListener("input", function () { g.nome = nome.value; desenharPrevia(); });
@@ -430,14 +554,14 @@
       CORES.forEach(function (cor) {
         var b = el("button", { type: "button", class: g.cor === cor ? "sel" : "", "aria-label": "Cor " + cor, title: cor, onclick: function () { g.cor = cor; desenharCores(); desenharPrevia(); } });
         b.style.background = cor;
-        cores.append(b);
+        add(cores, b);
       });
       var livre = el("input", { type: "color", value: g.cor, "aria-label": "Outra cor" });
       livre.addEventListener("input", function () { g.cor = livre.value; desenharPrevia(); });
-      cores.append(livre);
+      add(cores, livre);
     }
     var tom = el("select", { id: "ag-tom" });
-    Object.keys(TONS).forEach(function (k) { tom.append(el("option", { value: k, text: TONS[k], selected: g.tom === k })); });
+    Object.keys(TONS).forEach(function (k) { add(tom, el("option", { value: k, text: TONS[k], selected: g.tom === k })); });
     tom.addEventListener("change", function () { g.tom = tom.value; });
     var lado = el("select", { id: "ag-lado" }, [el("option", { value: "direita", text: "Direita", selected: g.posicao !== "esquerda" }), el("option", { value: "esquerda", text: "Esquerda", selected: g.posicao === "esquerda" })]);
     lado.addEventListener("change", function () { g.posicao = lado.value; desenharPrevia(); });
@@ -446,7 +570,7 @@
     saud.addEventListener("input", function () { g.saudacao = saud.value; desenharPrevia(); });
     desenharCores();
     desenharPrevia();
-    c.append(
+    add(c,
       el("div", { class: "grade-2" }, [
         el("div", { class: "cartao conteudo" }, [
           el("label", { class: "campo", for: "ag-nome" }, ["Nome do assistente", nome]),
@@ -472,11 +596,11 @@
       return card;
     }
     if (a.manual) e.inserir = false;
-    opcoes.append(
+    add(opcoes,
       opcao("op-inserir", "Inserir o widget nas páginas", a.manual ? "Seu projeto usa " + (a.framework || "um formato sem index.html na raiz") + ": no fim, o instalador mostra a linha para colar." : "Insere uma linha antes de </body> em " + a.paginasEntrada.length + " página(s): " + a.paginasEntrada.slice(0, 4).join(", ") + (a.paginasEntrada.length > 4 ? "…" : "") + ". Cópia de cada uma em agente-gerador/backup/html.", e.inserir, function (v) { e.inserir = v; }, a.manual),
     );
-    if (a.temBase) opcoes.append(opcao("op-regerar", "Regerar a base do zero", "A base atual vai para agente-gerador/backup e uma nova é criada a partir do raio X. Deixe desmarcado para manter o que você já editou.", e.regerar, function (v) { e.regerar = v; }));
-    if (a.gemini) opcoes.append(opcao("op-gemini", "Melhorar a base com o Gemini (gratuito)", "Encontrei a GEMINI_API_KEY. O Gemini sugere exemplos e perguntas novas; tudo passa pela conferência da base.", e.gemini, function (v) { e.gemini = v; }));
+    if (a.temBase) add(opcoes, opcao("op-regerar", "Regerar a base do zero", "A base atual vai para agente-gerador/backup e uma nova é criada a partir do raio X. Deixe desmarcado para manter o que você já editou.", e.regerar, function (v) { e.regerar = v; }));
+    if (a.gemini) add(opcoes, opcao("op-gemini", "Melhorar a base com o Gemini (gratuito)", "Encontrei a GEMINI_API_KEY. O Gemini sugere exemplos e perguntas novas; tudo passa pela conferência da base.", e.gemini, function (v) { e.gemini = v; }));
     var resumo = el("div", { class: "cartao" }, [
       el("h3", { text: "Resumo" }),
       el("ul", { class: "checks" }, [
@@ -486,14 +610,14 @@
       ]),
     ]);
     var acao = el("div", { class: "cartao" });
-    c.append(resumo, opcoes, acao);
+    add(c, resumo, opcoes, acao);
     if (S.estado.instalacao) return mostrarFeito(acao, S.estado.instalacao);
     var botao = el("button", { class: "btn pri grande", type: "button", text: "Instalar" });
-    acao.append(el("h3", { text: "Instalar no projeto" }), el("p", { class: "muted", text: "Leva poucos segundos." }), botao);
+    add(acao, el("h3", { text: "Instalar no projeto" }), el("p", { class: "muted", text: "Leva poucos segundos." }), botao);
     botao.addEventListener("click", function () {
       botao.disabled = true;
       acao.textContent = "";
-      acao.append(el("h3", { text: "Instalando…" }));
+      add(acao, el("h3", { text: "Instalando…" }));
       var ver = progresso(acao);
       api("POST", "/api/instalar", e)
         .then(function () { atualizarBotoes(); return acompanhar(ver); })
@@ -504,15 +628,15 @@
           mostrarFeito(acao, S.estado.instalacao);
           status("Instalado! Clique em Próximo para testar.");
         })
-        .catch(function (err) { falha(err); acao.append(el("p", { class: "aviso erro", text: err.message })); botao.disabled = false; acao.append(botao); });
+        .catch(function (err) { falha(err); add(acao, el("p", { class: "aviso erro", text: err.message })); botao.disabled = false; add(acao, botao); });
     });
   }
   function mostrarFeito(alvo, r) {
     alvo.textContent = "";
-    alvo.append(el("h3", {}, ["Instalação concluída ", el("span", { class: "selo ok", text: "Acerto " + (r.geral == null ? "-" : r.geral + "%") })]), el("ul", { class: "checks" }, r.resumo.map(function (x) { return el("li", { text: x }); })));
+    add(alvo, el("h3", {}, ["Instalação concluída ", el("span", { class: "selo ok", text: "Acerto " + (r.geral == null ? "-" : r.geral + "%") })]), el("ul", { class: "checks" }, r.resumo.map(function (x) { return el("li", { text: x }); })));
     if (r.snippet) {
       var copiar = el("button", { class: "btn sec", type: "button", text: "Copiar", onclick: function () { navigator.clipboard && navigator.clipboard.writeText(r.snippet).then(function () { status("Copiado."); }); } });
-      alvo.append(el("p", { class: "aviso alerta", text: "Falta um passo manual: cole a linha abaixo no seu projeto (também está em agente-gerador/COMO-LIGAR.txt)." }), el("pre", { class: "codigo", text: r.snippet }), copiar);
+      add(alvo, el("p", { class: "aviso alerta", text: "Falta um passo manual: cole a linha abaixo no seu projeto (também está em agente-gerador/COMO-LIGAR.txt)." }), el("pre", { class: "codigo", text: r.snippet }), copiar);
     }
   }
 
@@ -528,17 +652,17 @@
       if (v == null) return;
       var b = el("div", { class: "barra" }, el("i"));
       b.firstChild.style.width = v + "%";
-      barras.append(el("div", {}, [el("span", { text: nomes[k] || k }), b, el("span", { text: v + "%" })]));
+      add(barras, el("div", {}, [el("span", { text: nomes[k] || k }), b, el("span", { text: v + "%" })]));
     });
     var site = el("div");
     if (r.podeAbrirSite) {
-      site.append(el("button", { class: "btn sec", type: "button", text: S.estado.site ? "Abrir o site de novo" : "Abrir o site com o agente", onclick: abrirSite }));
-      if (S.estado.site) site.append(el("p", { class: "pequeno muted" }, ["Site em ", el("a", { href: S.estado.site.url, target: "_blank", rel: "noopener", text: S.estado.site.url })]));
-    } else site.append(el("p", { class: "muted pequeno", text: "Seu projeto não é HTML simples: rode o site do seu jeito (ex.: npm run dev) para ver o agente. Na etapa 2 o instalador abre o site com o agente em modo treino." }));
+      add(site, el("button", { class: "btn sec", type: "button", text: S.estado.site ? "Abrir o site de novo" : "Abrir o site com o agente", onclick: abrirSite }));
+      if (S.estado.site) add(site, el("p", { class: "pequeno muted" }, ["Site em ", el("a", { href: S.estado.site.url, target: "_blank", rel: "noopener", text: S.estado.site.url })]));
+    } else add(site, el("p", { class: "muted pequeno", text: "Seu projeto não é HTML simples: rode o site do seu jeito (ex.: npm run dev) para ver o agente. Na etapa 2 o instalador abre o site com o agente em modo treino." }));
     function abrirSite() {
-      api("POST", "/api/site").then(function (s) { return recarregar().then(function () { status("Site aberto em " + s.url); site.textContent = ""; site.append(el("p", { class: "pequeno" }, ["Site em ", el("a", { href: s.url, target: "_blank", rel: "noopener", text: s.url })])); }); }).catch(falha);
+      api("POST", "/api/site").then(function (s) { return recarregar().then(function () { status("Site aberto em " + s.url); site.textContent = ""; add(site, el("p", { class: "pequeno" }, ["Site em ", el("a", { href: s.url, target: "_blank", rel: "noopener", text: s.url })])); }); }).catch(falha);
     }
-    c.append(el("div", { class: "grade-2" }, [chat(), el("div", { class: "conteudo" }, [el("div", { class: "cartao" }, [el("h3", { text: "Acerto da base" }), el("div", { class: "medidor" }, [anel, barras]), el("p", { class: "muted pequeno", text: "O instalador testa a base com as próprias perguntas e variações. Acima de 80% já é um bom começo; a etapa 2 ajuda a subir." })]), el("div", { class: "cartao" }, [el("h3", { text: "Ver no site" }), site])])]));
+    add(c, el("div", { class: "grade-2" }, [chat(), el("div", { class: "conteudo" }, [el("div", { class: "cartao" }, [el("h3", { text: "Acerto da base" }), el("div", { class: "medidor" }, [anel, barras]), el("p", { class: "muted pequeno", text: "O instalador testa a base com as próprias perguntas e variações. Acima de 80% já é um bom começo; a etapa 2 ajuda a subir." })]), el("div", { class: "cartao" }, [el("h3", { text: "Ver no site" }), site])])]));
   }
   function chat() {
     var lista = el("div", { class: "mensagens", "aria-live": "polite" });
@@ -547,13 +671,13 @@
     function desenhar() {
       lista.textContent = "";
       S.chat.msgs.forEach(function (m) {
-        if (m.eu) return lista.append(el("div", { class: "msg eu", text: m.texto }));
+        if (m.eu) return add(lista, el("div", { class: "msg eu", text: m.texto }));
         var box = el("div", { class: "msg ag" }, [m.texto]);
-        (m.itens || []).forEach(function (i) { box.append(el("div", { class: "pequeno", text: "• " + i.nome + (i.precoTexto ? " — " + i.precoTexto : "") })); });
-        (m.acoes || []).forEach(function (x) { box.append(el("div", { class: "pequeno", text: "→ " + x.rotulo + " (" + x.href + ")" })); });
-        if (m.intencao) box.append(el("span", { class: "meta", text: "entendeu: " + m.intencao + (m.confianca != null ? " · confiança " + m.confianca : "") }));
-        if (m.sugestoes && m.sugestoes.length) box.append(el("div", { class: "chips" }, m.sugestoes.map(function (s) { return el("button", { type: "button", text: s, onclick: function () { enviar(s); } }); })));
-        lista.append(box);
+        (m.itens || []).forEach(function (i) { add(box, el("div", { class: "pequeno", text: "• " + i.nome + (i.precoTexto ? " — " + i.precoTexto : "") })); });
+        (m.acoes || []).forEach(function (x) { add(box, el("div", { class: "pequeno", text: "→ " + x.rotulo + " (" + x.href + ")" })); });
+        if (m.intencao) add(box, el("span", { class: "meta", text: "entendeu: " + m.intencao + (m.confianca != null ? " · confiança " + m.confianca : "") }));
+        if (m.sugestoes && m.sugestoes.length) add(box, el("div", { class: "chips" }, m.sugestoes.map(function (s) { return el("button", { type: "button", text: s, onclick: function () { enviar(s); } }); })));
+        add(lista, box);
       });
       lista.scrollTop = lista.scrollHeight;
     }
@@ -587,7 +711,7 @@
         ["treinar", "Treinar conversando", "Você conversa com o agente no site e marca Certo ou Corrigir em cada resposta. Dá para criar conversas em etapas."],
         ["observar", "Observar o uso do site", "Você usa o site como cliente por alguns minutos (navega, busca, entra na conta). O agente aprende páginas, buscas e consultas."],
       ].forEach(function (m) {
-        modos.append(el("button", { type: "button", role: "radio", "aria-checked": S.modo === m[0] ? "true" : "false", class: "modo" + (S.modo === m[0] ? " sel" : ""), onclick: function () { S.modo = m[0]; o.minutos = m[0] === "treinar" ? 30 : 5; minutos.value = o.minutos; desenharModos(); } }, [el("strong", { text: m[1] }), el("span", { text: m[2] })]));
+        add(modos, el("button", { type: "button", role: "radio", "aria-checked": S.modo === m[0] ? "true" : "false", class: "modo" + (S.modo === m[0] ? " sel" : ""), onclick: function () { S.modo = m[0]; o.minutos = m[0] === "treinar" ? 30 : 5; minutos.value = o.minutos; desenharModos(); } }, [el("strong", { text: m[1] }), el("span", { text: m[2] })]));
       });
     }
     var url = el("input", { type: "text", placeholder: "Opcional: http://localhost:3000", value: o.url });
@@ -604,7 +728,7 @@
       el("p", { class: "muted pequeno", text: "Prefere editar? O editor mostra perguntas, intenções, páginas e conversas em formulários, com teste e acerto na hora." }),
       el("button", { class: "btn sec", type: "button", text: "Abrir o editor da base", onclick: function () { api("POST", "/api/editor").then(function (r) { status("Editor aberto no navegador."); window.open(r.url, "_blank", "noopener"); }).catch(falha); } }),
     ]);
-    c.append(
+    add(c,
       modos,
       el("details", { class: "cartao" }, [
         el("summary", { text: "Onde o site está rodando? (só para sites que não são HTML simples)" }),
@@ -624,7 +748,7 @@
     var s = S.estado && S.estado.sessao;
     p.textContent = "";
     if (s && s.status === "rodando") {
-      p.append(
+      add(p,
         el("h3", {}, [el("span", { class: "ao-vivo", text: s.modo === "treinar" ? "Treino em andamento" : "Observação em andamento" })]),
         s.url ? el("p", {}, ["O site abriu no navegador em ", el("a", { href: s.url, target: "_blank", rel: "noopener", text: s.url }), ". Se não abriu, clique no link."]) : el("p", { class: "muted", text: "Preparando o site…" }),
         el("ul", { class: "registro" }, s.log.slice(-12).map(function (l) { return el("li", { text: l }); })),
@@ -634,11 +758,11 @@
     }
     if (s && s.status === "ok" && s.resultado) {
       var r = s.resultado;
-      p.append(el("p", { class: "aviso ok", text: "Sessão concluída. Acerto da base: " + r.antes + "% → " + r.depois + "%" + (r.correcoes != null ? " · " + r.correcoes + " correção(ões), " + r.certas + " resposta(s) marcada(s) como certa(s)" : "") + "." }));
-      p.append(el("details", {}, [el("summary", { class: "pequeno", text: "Ver o relatório" }), el("pre", { class: "codigo", text: r.texto })]));
+      add(p, el("p", { class: "aviso ok", text: "Sessão concluída. Acerto da base: " + r.antes + "% → " + r.depois + "%" + (r.correcoes != null ? " · " + r.correcoes + " correção(ões), " + r.certas + " resposta(s) marcada(s) como certa(s)" : "") + "." }));
+      add(p, el("details", {}, [el("summary", { class: "pequeno", text: "Ver o relatório" }), el("pre", { class: "codigo", text: r.texto })]));
     }
-    if (s && s.status === "erro") p.append(el("p", { class: "aviso erro", text: s.erro }));
-    p.append(el("h3", { text: s ? "Nova sessão" : "Pronto para começar" }), el("button", { class: "btn pri grande", type: "button", text: S.modo === "treinar" ? "Iniciar treino" : "Iniciar observação", onclick: iniciar }));
+    if (s && s.status === "erro") add(p, el("p", { class: "aviso erro", text: s.erro }));
+    add(p, el("h3", { text: s ? "Nova sessão" : "Pronto para começar" }), el("button", { class: "btn pri grande", type: "button", text: S.modo === "treinar" ? "Iniciar treino" : "Iniciar observação", onclick: iniciar }));
     function iniciar() {
       api("POST", "/api/sessao/iniciar", { modo: S.modo, url: S.sessaoOpcoes.url, permitirNpm: S.sessaoOpcoes.permitirNpm, minutos: S.sessaoOpcoes.minutos })
         .then(function (r) { S.estado.sessao = r.sessao; atualizarBotoes(); desenharPainel(p); p.scrollIntoView({ behavior: "smooth", block: "start" }); acompanharSessao(p); })
@@ -659,7 +783,7 @@
           var ul = p.querySelector(".registro");
           if (p.dataset.chave === chave && ul) {
             ul.textContent = "";
-            r.sessao.log.slice(-12).forEach(function (l) { ul.append(el("li", { text: l })); });
+            r.sessao.log.slice(-12).forEach(function (l) { add(ul, el("li", { text: l })); });
           } else {
             p.dataset.chave = chave;
             desenharPainel(p);
@@ -675,7 +799,7 @@
     if (!confirm("Fechar o instalador? O agente continua instalado no site. Para a etapa 2 depois, abra o executável de novo.")) return;
     api("POST", "/api/sair").then(function () {
       document.body.textContent = "";
-      document.body.append(el("div", { class: "cartao", style: null }, [el("h3", { text: "Instalador fechado." }), el("p", { text: "Pode fechar esta janela." })]));
+      add(document.body, el("div", { class: "cartao", style: null }, [el("h3", { text: "Instalador fechado." }), el("p", { text: "Pode fechar esta janela." })]));
       setTimeout(function () { window.close(); }, 400);
     }).catch(falha);
   }

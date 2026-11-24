@@ -57,6 +57,7 @@ Crisp, Botpress, Voiceflow, Hyperleap). Uso: [CONTEXTO-E-MIDIA.md](CONTEXTO-E-MI
 | V5 | Aparência com prévia (nome, cor, tom, lado, primeira mensagem) | ✅ |
 | V6 | Instalação com progresso real, conversa de teste e acerto por área dentro da janela | ✅ |
 | V7 | **Etapa 2 sem fechar o instalador**: treino, observação (com endereço do site ou `npm run dev`) e editor da base | ✅ |
+| V9 | **Desinstalador**: o executável detecta um agente criado por ele e oferece desinstalar (widget fora das páginas, pasta apagada só se for nossa, base guardada); comando `desinstalar` | ✅ |
 | V8 | Windows sem terminal (subsistema GUI no cabeçalho PE), Edge/Chrome em modo aplicativo, fecha sozinho quando a janela some | ✅ |
 
 ## 0.10 — Conversa guiada e proatividade 🔜

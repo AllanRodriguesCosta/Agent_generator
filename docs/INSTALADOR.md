@@ -1,4 +1,4 @@
-# Instalador visual (0.9): tudo com cliques, sem terminal
+# Instalador visual (0.9): instalar e desinstalar com cliques, sem terminal
 
 O `agente-instalador` é o jeito mais fácil de colocar o agente no seu site. Ele abre uma janela
 parecida com a de um instalador de programas do Windows: uma lista de etapas à esquerda, as
@@ -77,6 +77,41 @@ Termine no botão **Encerrar e aprender** (ou no "Concluir" da página). Pode re
 quiser.
 
 <p align="center"><img src="img/instalador-teste.png" alt="Etapa Teste: conversa com o agente dentro do instalador e acerto da base por área" width="360"> <img src="img/instalador-etapa2.png" alt="Etapa 2: escolher entre treinar conversando e observar o uso do site, com o botão Iniciar treino" width="360"></p>
+
+## Desinstalar
+
+Se o executável encontra, na pasta onde está, um agente criado por ele (a pasta do agente com o
+núcleo, o widget e a base, ou páginas com a linha do widget), a primeira etapa mostra **"Já existe
+um agente criado pelo Agent Generator neste projeto"** com duas opções: seguir com **Próximo** para
+atualizar/reconfigurar (o que você editou é mantido) ou **Desinstalar o agente**.
+
+A desinstalação tem duas etapas, também com as instruções do que fazer:
+
+1. **Revisar:** lista o que vai sair (a pasta do agente e quantos arquivos, as páginas que têm a
+   linha do widget) e um checkbox **Apagar também a pasta agente-gerador/** (desmarcado por padrão).
+   Clique em **Desinstalar** e confirme.
+2. **Desinstalação:** progresso e resumo.
+
+O que ela faz:
+
+- **Guarda a base de conhecimento antes** (ela pode ter sido treinada por você), em
+  `agente-gerador/backup/conhecimento-desinstalado-<data>.json`, ou em
+  `agente-base-<data>.json` na raiz do projeto se você pediu para apagar `agente-gerador/`.
+- **Tira só o bloco que o instalador colocou** nas páginas (o marcador
+  `<!-- agente: agent-generator -->` e as duas linhas do widget). A página volta a ser igual à
+  original; uma cópia de antes fica em `agente-gerador/backup/html-antes-de-desinstalar/`.
+- **Apaga a pasta do agente** só se ela tiver a cara de uma pasta criada pelo instalador
+  (`widget.js`, `nucleo/agent.js` e `conhecimento/`) e estiver dentro do projeto. Uma pasta
+  `agente/` sua, com outro conteúdo, nunca é apagada.
+- Linha do widget **colada à mão** (ex.: no `layout.tsx` do Next.js) não é alterada: aparece no
+  resumo como "Linha colada à mão" para você apagar.
+- Deixa `agente-gerador/DESINSTALACAO.txt` com o registro (se a pasta ficar).
+
+Pelo terminal: `agent-generator desinstalar ./meu-site` mostra o que vai sair e pede confirmação
+(`--sim` confirma sem perguntar, `--tudo` apaga também `agente-gerador/`). O `agente-gerador`
+(terminal) também oferece desinstalar quando encontra um agente instalado.
+
+<p align="center"><img src="img/instalador-desinstalar.png" alt="Etapa Revisar da desinstalação: lista do que vai sair e checkbox para apagar também a pasta agente-gerador" width="640"></p>
 
 ## Fechar
 
