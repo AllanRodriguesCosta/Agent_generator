@@ -1,6 +1,7 @@
 # Roadmap do Agent Generator (a partir da 0.7)
 
-> Atualizado em 23/11/2026 com a 0.8 (contexto do usuário, fotos no chat e conversa natural).
+> Atualizado em 24/11/2026 com a 0.9 (instalador visual). A conversa guiada, que estava prevista
+> para a 0.9, passou para a 0.10.
 
 Objetivo: chegar perto do limite do que um agente **local, gratuito e sem IA obrigatória**
 consegue fazer, e deixar a IA opcional só para o que realmente precisa dela. A pesquisa que
@@ -45,7 +46,20 @@ Crisp, Botpress, Voiceflow, Hyperleap). Uso: [CONTEXTO-E-MIDIA.md](CONTEXTO-E-MI
 | L12 | **Passagem para humano com resumo**: WhatsApp abre com as últimas perguntas (era I2) | ✅ |
 | L13 | Setor construção com termos de incorporadora (habite-se, fundação, alvenaria, acabamento, vistoria, incorporação) | ✅ |
 
-## 0.9 — Conversa guiada e proatividade 🔜
+## 0.9 — Instalador visual ✅ (24/11/2026)
+
+| # | Item | Status |
+| --- | --- | --- |
+| V1 | **`agente-instalador`**: janela com etapas (boas-vindas, pasta, raio X, funcionalidades, aparência, instalação, teste, etapa 2), cada uma com as instruções do que fazer | ✅ |
+| V2 | **Funcionalidades com checkbox**, só as críticas: catálogo, busca, dados da conta (sensível), perfil (sensível), formulários, fotos, conversas em etapas; o que não foi encontrado fica em cinza | ✅ |
+| V3 | `agente.recursos` + `activeView`: desligar não apaga a base; avaliação, widget e IA opcional respeitam | ✅ |
+| V4 | Ações críticas (pagamento, login, excluir, dados pessoais) mostradas como sempre bloqueadas | ✅ |
+| V5 | Aparência com prévia (nome, cor, tom, lado, primeira mensagem) | ✅ |
+| V6 | Instalação com progresso real, conversa de teste e acerto por área dentro da janela | ✅ |
+| V7 | **Etapa 2 sem fechar o instalador**: treino, observação (com endereço do site ou `npm run dev`) e editor da base | ✅ |
+| V8 | Windows sem terminal (subsistema GUI no cabeçalho PE), Edge/Chrome em modo aplicativo, fecha sozinho quando a janela some | ✅ |
+
+## 0.10 — Conversa guiada e proatividade 🔜
 
 | # | Item | Por quê |
 | --- | --- | --- |
@@ -80,3 +94,6 @@ Crisp, Botpress, Voiceflow, Hyperleap). Uso: [CONTEXTO-E-MIDIA.md](CONTEXTO-E-MI
 - Teste em projeto real (Violet Voltage e o café de exemplo) antes de publicar a versão.
 - 0.8: fixture `tests/fixtures/construtora/` (2 empreendimentos, 6 galerias, 11 fotos) e teste do
   widget num navegador de verdade (foto carregada, login pedido, perfil completado, sem erros).
+- 0.9: instalador percorrido de ponta a ponta num navegador de verdade (8 etapas, instalação,
+  conversa de teste, treino iniciado e encerrado, sem erros no console) e teste de fumaça do
+  executável no CI (`scripts/smoke-instalador.mjs`).

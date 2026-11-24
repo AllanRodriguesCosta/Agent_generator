@@ -42,6 +42,7 @@ jobs:
           mkdir -p saida
           cp "dist/${{ matrix.name }}" "saida/"
           cp "dist/${{ matrix.name }}" "saida/$(echo '${{ matrix.name }}' | sed 's/agente-gerador/agente-treinador/')"
+          cp dist/agente-instalador-* saida/
           cp lancadores/agente-gerador.cmd lancadores/agente-gerador.sh saida/
       - uses: actions/upload-artifact@v4
         with:
@@ -66,4 +67,4 @@ jobs:
           ls -la arquivos
           gh release create "$TAG" arquivos/* \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Agent Generator $TAG" \
-            --notes "Parte 1: agente-gerador (cria o agente e, se quiser, observa você usando o site). Parte 2: agente-treinador (abre o site com o agente em modo treino para corrigir as respostas). Coloque na pasta raiz do site e dê dois cliques. Detalhes: docs/EXECUTAVEL.md e docs/OBSERVAR-E-TREINAR.md."
+            --notes "Novo na 0.9: agente-instalador, um instalador visual com etapas, checkboxes das funcionalidades e a etapa 2 (treino assistido) sem usar o terminal. Coloque na pasta raiz do site e dê dois cliques (docs/INSTALADOR.md). Parte 1: agente-gerador (cria o agente e, se quiser, observa você usando o site). Parte 2: agente-treinador (abre o site com o agente em modo treino para corrigir as respostas). Coloque na pasta raiz do site e dê dois cliques. Detalhes: docs/EXECUTAVEL.md e docs/OBSERVAR-E-TREINAR.md."

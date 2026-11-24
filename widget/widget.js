@@ -121,7 +121,8 @@ export async function loadKnowledge(base, fetchImpl = fetch) {
   );
   const raw = Object.fromEntries(entries.filter(([, v]) => v !== undefined));
   const catalog = raw.catalogo;
-  if (catalog?.url) {
+  // Versão 0.9: catálogo desligado no instalador não busca a API.
+  if (catalog?.url && raw.agente?.recursos?.catalogo !== false) {
     try {
       const res = await fetchImpl(new URL(catalog.url, globalThis.location?.href || base), { headers: { accept: "application/json" } });
       const mapped = res.ok ? mapItems(listFrom(await res.json()), catalog.url, catalog.campos || {}, 1) : null;
@@ -166,7 +167,7 @@ export async function mount(options = {}) {
   // modo serviço (agente hospedado à parte, ao lado de um site já publicado).
   const endpoint = agente.endpoint && agente.endpoint.startsWith(".") ? new URL(agente.endpoint, base).href : agente.endpoint;
   const state = load();
-  const perfilCfg = agent.knowledge.perfil;
+  const perfilCfg = agent.recursos?.perfil === false ? { ...agent.knowledge.perfil, ativo: false } : agent.knowledge.perfil;
   let usuario = sanitizeUser(userFromPage()) || readCachedUser();
   // Lê perfil.fonte (caminho do próprio site) com o cookie da sessão; 401/403 = não logado.
   async function ensureUser() {

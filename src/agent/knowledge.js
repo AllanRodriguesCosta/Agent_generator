@@ -15,6 +15,9 @@
 // A conferência corta o que for grande demais e devolve a lista de problemas encontrados.
 
 export const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes", "midias", "perfil"];
+// Versão 0.9: funcionalidades que podem ser ligadas ou desligadas (agente.json -> recursos). Faltando =
+// ligada, como nas versões anteriores. Desligar não apaga nada da base: só deixa de ser usado.
+export const RECURSOS = ["catalogo", "busca", "conta", "perfil", "formularios", "fotos", "fluxos"];
 export const LIMITS = { texto: 1200, curto: 160, exemplos: 60, respostas: 6, acoes: 4, faq: 400, paginas: 300, itens: 2000, fluxos: 60, opcoes: 8, consultas: 12, glossario: 120, conteudos: 400, interacoes: 40, galerias: 80, fotos: 60, perfil: 20, capacidades: 300 };
 
 const str = (v, max = LIMITS.curto) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
@@ -66,6 +69,7 @@ export function checkKnowledge(input = {}) {
     limiar: Number.isFinite(a.limiar) && a.limiar >= 0.3 && a.limiar <= 0.95 ? a.limiar : 0.55,
     cor: /^#[0-9a-f]{6}$/i.test(a.cor || "") ? a.cor : "#6d28d9",
     posicao: a.posicao === "esquerda" ? "esquerda" : "direita",
+    recursos: Object.fromEntries(RECURSOS.map((k) => [k, !(a.recursos && typeof a.recursos === "object" && a.recursos[k] === false)])),
     // Versão 0.8: tom das frases de ligação ("neutro" mantém só o conteúdo da base).
     tom: ["amigavel", "formal", "neutro"].includes(a.tom) ? a.tom : "amigavel",
     // Versão 0.8: simula digitação no widget (ms por caractere, 0 desliga; teto de 1,2 s).
@@ -416,4 +420,28 @@ export function checkKnowledge(input = {}) {
   if (!Object.keys(intencoes).length && !faq.length && !paginas.length && !itens.length && !url && !fluxos.length && !conteudos.length && !interacoes.length)
     problems.push("Base vazia: o agente só vai cumprimentar e pedir outra pergunta.");
   return { knowledge: { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, acoes: { versao: 1, padrao: politicaAcoes, acoes, candidatas }, setor, conteudos, interacoes, midias, perfil }, problems };
+}
+
+// Versão 0.9: a parte da base que o agente usa, respeitando agente.recursos. A base completa
+// continua igual (no disco e em createAgent().knowledge); só a "vista" ativa fica sem o que foi
+// desligado no instalador.
+export function activeView(knowledge) {
+  const r = knowledge.agente?.recursos || {};
+  const off = (k) => r[k] === false;
+  const { catalogo, consultas, perfil, midias } = knowledge;
+  // Catálogo desligado: some também a intenção de ajuda do catálogo e o atalho "Ver <rótulo>".
+  const semCatalogo = off("catalogo");
+  const intencoes = semCatalogo ? Object.fromEntries(Object.entries(knowledge.intencoes).filter(([k]) => k !== "catalogo_ajuda")) : knowledge.intencoes;
+  const verCatalogo = (s) => semCatalogo && catalogo.rotulo && s.toLowerCase() === `ver ${catalogo.rotulo}`.toLowerCase();
+  return {
+    ...knowledge,
+    agente: semCatalogo ? { ...knowledge.agente, sugestoes: knowledge.agente.sugestoes.filter((s) => !verCatalogo(s)) } : knowledge.agente,
+    intencoes: semCatalogo ? Object.fromEntries(Object.entries(intencoes).map(([k, v]) => [k, { ...v, sugestoes: v.sugestoes.filter((s) => !verCatalogo(s)) }])) : intencoes,
+    catalogo: off("catalogo") ? { rotulo: catalogo.rotulo, itens: [] } : catalogo,
+    consultas: { ...consultas, buscas: off("busca") ? [] : consultas.buscas, dados: off("conta") ? [] : consultas.dados },
+    perfil: off("perfil") ? { ...perfil, ativo: false } : perfil,
+    interacoes: off("formularios") ? [] : knowledge.interacoes,
+    midias: off("fotos") ? { ...midias, galerias: [] } : midias,
+    fluxos: off("fluxos") ? [] : knowledge.fluxos,
+  };
 }

@@ -48,6 +48,13 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
   tom, sugere perguntas relacionadas, acolhe reclamações e leva o resumo da conversa ao WhatsApp.
   Ver [docs/CONTEXTO-E-MIDIA.md](docs/CONTEXTO-E-MIDIA.md) e a
   [pesquisa de mercado](docs/PESQUISA-MERCADO.md).
+- **Instalador visual (0.9):** o `agente-instalador` abre uma **janela com etapas**, como os
+  instaladores de programas do Windows, com as instruções do que fazer em cada etapa: pasta do
+  projeto, raio X, **funcionalidades com checkbox** (catálogo, busca, dados da conta, perfil,
+  formulários, fotos, conversas em etapas; as ações críticas ficam sempre bloqueadas), aparência
+  com prévia, instalação com progresso e conversa de teste. Depois de instalar, ele **continua
+  aberto** para a etapa 2 (treino assistido, observação e editor da base). No Windows não abre
+  terminal. Ver [docs/INSTALADOR.md](docs/INSTALADOR.md).
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 
@@ -59,10 +66,16 @@ servir a qualquer projeto.
 
 ## Jeito mais fácil: executável (sem instalar nada)
 
-1. Baixe o executável do seu sistema na página **Releases** (Windows `.exe`, Linux ou macOS).
+1. Baixe o **`agente-instalador`** do seu sistema na página **Releases** (Windows `.exe`, Linux ou macOS).
 2. Coloque o arquivo na **pasta raiz do seu site** (onde fica o `index.html` ou o `package.json`).
-3. Dê dois cliques e responda sim/não. Ele faz o raio X, cria a base, instala o agente, liga o
-   widget nas páginas (guardando cópia dos originais), mostra o acerto e abre o site para testar.
+3. Dê dois cliques. Abre uma janela com as etapas e as instruções de cada uma: confira a pasta,
+   veja o raio X, marque as funcionalidades, escolha nome e cor e clique em **Instalar**. Depois,
+   converse com o agente e siga para a etapa 2 (treino) sem fechar a janela.
+
+<p align="center"><img src="docs/img/instalador-funcionalidades.png" alt="Instalador visual na etapa Funcionalidades, com as etapas à esquerda e os checkboxes" width="640"></p>
+
+Prefere o terminal? O `agente-gerador` faz o mesmo com perguntas de sim/não.
+Detalhes do instalador: [docs/INSTALADOR.md](docs/INSTALADOR.md).
 
 Detalhes, avisos do Windows/macOS e o que ele altera: [docs/EXECUTAVEL.md](docs/EXECUTAVEL.md).
 Quem já tem Node e Git pode usar o lançador leve da pasta [`lancadores/`](lancadores).
@@ -116,6 +129,7 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 
 | Comando | O que faz |
 | --- | --- |
+| `instalador [pasta]` | (0.9) Instalador visual numa janela: etapas com instruções, funcionalidades com checkbox, aparência, instalação, teste e etapa 2 (é o que o `agente-instalador` abre) |
 | `assistente [pasta]` | Guiado com perguntas sim/não, do raio X ao teste no navegador (é o que o executável roda). `--sim` aceita os padrões |
 | `criar <pasta>` | Tudo de uma vez: analisar, gerar, instalar e avaliar |
 | `analisar <pasta>` | Só o raio X (`agente-gerador/relatorio.json`) |

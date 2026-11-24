@@ -21,7 +21,8 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
   "endpoint": "",
   "registro": "",
   "tom": "amigavel",
-  "digitacao": 12
+  "digitacao": 12,
+  "recursos": { "catalogo": true, "busca": true, "conta": true, "perfil": true, "formularios": true, "fotos": true, "fluxos": true }
 }
 ```
 
@@ -39,6 +40,10 @@ carregar, o agente confere tudo: corta textos longos, descarta links perigosos (
 - `tom` (0.8): `"amigavel"` (padrão), `"formal"` ou `"neutro"`. Muda só as frases de abertura e
   o acolhimento; o conteúdo continua o da base. `"neutro"` desliga as duas coisas.
 - `digitacao` (0.8): milissegundos por caractere do indicador "digitando" (0 a 40; teto de 1,2 s).
+- `recursos` (0.9): funcionalidades ligadas (`true`, padrão) ou desligadas (`false`), escolhidas
+  nos checkboxes do instalador visual: `catalogo`, `busca`, `conta` (consultas da conta),
+  `perfil`, `formularios` (interações), `fotos` (galerias) e `fluxos`. Desligar não apaga o
+  arquivo correspondente: o agente só deixa de usar aquela parte (`activeView`).
 
 ## intencoes.json
 

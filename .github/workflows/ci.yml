@@ -84,6 +84,29 @@ jobs:
           wait $PID || { cat treino.txt; exit 1; }
           cat treino.txt
           grep -q "Treino do agente" agente-gerador/TREINO.txt
+      - name: Instalador visual (0.9) pelo executável
+        shell: bash
+        run: |
+          SITE="$RUNNER_TEMP/site do instalador"
+          mkdir -p "$SITE"
+          cp -R examples/loja-exemplo/. "$SITE/"
+          rm -rf "$SITE/agente" "$SITE/agente-gerador"
+          case "$RUNNER_OS" in Windows) EXE=agente-gerador-windows.exe ;; macOS) EXE=agente-gerador-macos ;; *) EXE=agente-gerador-linux ;; esac
+          cp "dist/$EXE" "$SITE/"
+          ( cd "$SITE" && "./$EXE" instalador . --sem-navegador --porta 4790 > instalador.txt 2>&1 ) &
+          PID=$!
+          node scripts/smoke-instalador.mjs "$SITE/instalador.txt"
+          wait $PID || { cat "$SITE/instalador.txt"; exit 1; }
+          cat "$SITE/instalador.txt"
+          grep -q '"catalogo": false' "$SITE/agente/conhecimento/agente.json"
+          grep -q "Assistente CI" "$SITE/agente/conhecimento/agente.json"
+          grep -q "agente: agent-generator" "$SITE/index.html"
+          # O instalador para duplo clique existe; no Windows ele é programa de janela (sem terminal).
+          ls dist/agente-instalador-*
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            node -e "const b=require('fs').readFileSync('dist/agente-instalador-windows.exe');const o=b.readUInt32LE(0x3c)+24+68;const s=b.readUInt16LE(o);console.log('subsistema',s);if(s!==2)process.exit(1)"
+            node -e "const b=require('fs').readFileSync('dist/agente-gerador-windows.exe');const o=b.readUInt32LE(0x3c)+24+68;const s=b.readUInt16LE(o);console.log('subsistema gerador',s);if(s!==3)process.exit(1)"
+          fi
       - name: Diagnóstico (só em caso de falha)
         if: failure()
         shell: bash

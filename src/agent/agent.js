@@ -4,7 +4,7 @@
 import { train, classify } from "./classifier.js";
 import { normalize, tokens } from "./text.js";
 import { createIndex, strong, weak } from "./search.js";
-import { checkKnowledge } from "./knowledge.js";
+import { checkKnowledge, activeView } from "./knowledge.js";
 import { valueAt, fillTemplate, firstName, pickPhoto, photoRequest } from "./context.js";
 import { catalogVocab, extractEntities, hasEntities, matchesEntities, colorsIn, describeEntities, FOLLOW_UP, COMPARE, DETAIL, pickOrdinals, compareItems } from "./entities.js";
 
@@ -61,7 +61,8 @@ const fill = (text, agente) => text.replaceAll("{site}", agente.site).replaceAll
 
 export function createAgent(input) {
   const { knowledge, problems } = checkKnowledge(input);
-  const { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, setor, conteudos, interacoes, midias, perfil } = knowledge;
+  // Versão 0.9: funcionalidades desligadas no instalador (agente.recursos) ficam fora da vista ativa.
+  const { agente, intencoes, faq, paginas, catalogo, fluxos, consultas, setor, conteudos, interacoes, midias, perfil } = activeView(knowledge);
   const perguntasPerfil = perfil.ativo ? perfil.perguntas : [];
   // Fluxos (conversa em etapas) e consultas da conta entram no classificador como intenções.
   const examples = {
@@ -599,5 +600,5 @@ export function createAgent(input) {
     const q = profileById(id);
     return q ? { acoes: [], itens: [], sugestoes: [], ...answerProfile(q, usuario), intencao: `perfil__${id}`, confianca: 1 } : null;
   };
-  return { reply, knowledge, problems, saudacao, perfil: perfilReply };
+  return { reply, knowledge, problems, saudacao, perfil: perfilReply, recursos: knowledge.agente.recursos };
 }

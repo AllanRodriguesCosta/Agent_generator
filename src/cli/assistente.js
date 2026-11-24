@@ -19,7 +19,7 @@ export function openBrowser(url, platform = process.platform) {
   const [cmd, args] =
     platform === "win32" ? ["cmd", ["/c", "start", "", url]] : platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
   try {
-    spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+    spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
     return true;
   } catch {
     return false;

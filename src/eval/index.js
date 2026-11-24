@@ -5,12 +5,13 @@
 // Mostra a porcentagem de acerto e as frases que erraram, para corrigir a base.
 import { train, classify } from "../agent/classifier.js";
 import { createAgent } from "../agent/agent.js";
-import { checkKnowledge } from "../agent/knowledge.js";
+import { checkKnowledge, activeView } from "../agent/knowledge.js";
 import { variationsOf } from "./variations.js";
 import { coverage } from "./coverage.js";
 
 export function evaluateKnowledge(input, { extra = [], variacoes = false } = {}) {
-  const { knowledge } = checkKnowledge(input);
+  // Versão 0.9: avalia só o que está ligado (agente.recursos).
+  const knowledge = activeView(checkKnowledge(input).knowledge);
   const result = { intencoes: { total: 0, certas: 0, erros: [] }, faq: { total: 0, certas: 0, erros: [] }, paginas: { total: 0, certas: 0, erros: [] }, frases: { total: 0, certas: 0, erros: [] } };
   const intents = knowledge.intencoes;
   const names = Object.keys(intents);
