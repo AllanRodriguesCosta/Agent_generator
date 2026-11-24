@@ -62,16 +62,37 @@ function extract(pkg, base) {
 // Duplo clique: sem argumentos -> assistente na pasta do executável.
 // Pasta arrastada sobre o executável -> assistente nessa pasta. Qualquer outra coisa -> CLI normal.
 // Parte 2: o mesmo executável com "treinador" no nome abre o modo treino (comando treinar).
+// Versão 0.9: "instalador" no nome abre o instalador visual (janela com etapas), sem terminal.
 function defaultCommand(exeName = "") {
-  return /treinador|trainer/i.test(path.basename(String(exeName))) ? "treinar" : "assistente";
+  const name = path.basename(String(exeName));
+  if (/treinador|trainer/i.test(name)) return "treinar";
+  if (/instalador|installer/i.test(name)) return "instalador";
+  return "assistente";
 }
 function resolveArgs(args, exeDir, isDir = (p) => fs.existsSync(p) && fs.statSync(p).isDirectory(), exeName = "") {
   const command = defaultCommand(exeName);
-  if (!args.length) return [command, exeDir];
-  if (args.length === 1 && !args[0].startsWith("-") && isDir(args[0])) return [command, args[0]];
+  // O instalador aberto por duplo clique encerra sozinho quando a janela fecha (--janela).
+  const extra = command === "instalador" ? ["--janela"] : [];
+  if (!args.length) return [command, exeDir, ...extra];
+  if (args.length === 1 && !args[0].startsWith("-") && isDir(args[0])) return [command, args[0], ...extra];
   // Só opções (inclusive com valor, como "--minutos 2"): o comando padrão na pasta do executável.
-  if (args[0].startsWith("--")) return [command, exeDir, ...args];
+  if (args[0].startsWith("--")) return [command, exeDir, ...extra, ...args];
   return args;
+}
+
+// Sem terminal (instalador no Windows), um erro na partida vira uma página no navegador.
+function showErrorPage(message, platform = process.platform) {
+  const file = path.join(os.tmpdir(), "agent-generator-erro.html");
+  const esc = String(message).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  fs.writeFileSync(file, `<!doctype html><meta charset="utf-8"><title>Agent Generator - erro</title><body style="font:16px system-ui;margin:40px;max-width:720px"><h1>O instalador não conseguiu abrir</h1><p>${esc}</p><p>Dica: coloque o executável na pasta raiz do site (a que tem o index.html ou o package.json) e abra de novo.</p></body>`);
+  const { spawn } = require("node:child_process");
+  const [cmd, args] = platform === "win32" ? ["cmd", ["/c", "start", "", file]] : platform === "darwin" ? ["open", [file]] : ["xdg-open", [file]];
+  try {
+    spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
+  } catch {
+    /* sem navegador: nada a fazer */
+  }
+  return file;
 }
 
 function hashOf(files) {
@@ -92,12 +113,13 @@ async function run() {
   if (code != null) process.exitCode = code;
 }
 
-module.exports = { cacheBase, extract, resolveArgs, hashOf, defaultCommand };
+module.exports = { cacheBase, extract, resolveArgs, hashOf, defaultCommand, showErrorPage };
 
 if (seaModule() || require.main === module) {
   run().catch(async (error) => {
     console.error(`Erro: ${error.message}`);
     process.exitCode = 1;
+    if (!process.stdout.isTTY && seaModule() && defaultCommand(process.execPath) === "instalador") showErrorPage(error.message);
     // Janela aberta por duplo clique: espera Enter para a pessoa conseguir ler o erro.
     if (process.stdin.isTTY && !process.argv.includes("--sem-pausa")) {
       process.stdout.write("\nPressione Enter para fechar...");

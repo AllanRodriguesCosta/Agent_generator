@@ -8,11 +8,14 @@ coisa**. Ele leva o Node e o agent-generator dentro de um único arquivo.
 
 Na página **Releases** do repositório (lado direito do GitHub), baixe o arquivo do seu sistema:
 
-| Sistema | Parte 1 (cria o agente) | Parte 2 (treina o agente) |
-| --- | --- | --- |
-| Windows 10/11 (64 bits) | `agente-gerador-windows.exe` | `agente-treinador-windows.exe` |
-| Linux (64 bits) | `agente-gerador-linux` | `agente-treinador-linux` |
-| macOS (Apple Silicon: M1, M2, M3...) | `agente-gerador-macos` | `agente-treinador-macos` |
+| Sistema | Instalador visual (0.9, recomendado) | Parte 1 no terminal | Parte 2 no terminal |
+| --- | --- | --- | --- |
+| Windows 10/11 (64 bits) | `agente-instalador-windows.exe` | `agente-gerador-windows.exe` | `agente-treinador-windows.exe` |
+| Linux (64 bits) | `agente-instalador-linux` | `agente-gerador-linux` | `agente-treinador-linux` |
+| macOS (Apple Silicon: M1, M2, M3...) | `agente-instalador-macos` | `agente-gerador-macos` | `agente-treinador-macos` |
+
+O **instalador** faz as duas partes numa janela com etapas, checkboxes e instruções, sem terminal:
+veja [INSTALADOR.md](INSTALADOR.md). O resto desta página fala do jeito pelo terminal.
 
 Cada arquivo tem de 80 a 120 MB, porque leva o Node dentro.
 
@@ -62,6 +65,12 @@ Gemini, que só é oferecido se você tiver configurado `GEMINI_API_KEY`.
 **React, Next.js, Vue, Angular e outros frameworks:** o executável instala o agente, mas não mexe
 no código-fonte. A linha a colar no layout fica em `agente-gerador/COMO-LIGAR.txt`.
 
+## Desinstalar
+
+Abra o `agente-instalador` na mesma pasta: ele mostra que já existe um agente e oferece
+**Desinstalar o agente**. Pelo terminal: `agente-gerador-windows.exe desinstalar . --sim`.
+Detalhes em [INSTALADOR.md](INSTALADOR.md#desinstalar).
+
 ## Rodar de novo
 
 Rode de novo quando o site mudar. Se a base já existe, ele pergunta se você quer **regerar do
@@ -100,11 +109,14 @@ contra os 100 MB do executável.
 - O código do executável tem três partes:
   - `sea/launcher.cjs`: o ponto de entrada;
   - `scripts/build-exe.js`: o empacotamento;
-  - `src/cli/assistente.js`: o fluxo de perguntas.
+  - `src/cli/assistente.js`: o fluxo de perguntas;
+  - `src/gui/` (0.9): o instalador visual (servidor local + página em `src/gui/client/`).
 - Para gerar o executável na sua máquina: `npm run build:exe`. Ele precisa de Node 22.12 ou mais
   novo, de preferência o 24, e de internet na primeira vez, para baixar o `postject` pelo `npx`.
-  O resultado sai em `dist/` (`agente-gerador-windows.exe`, `-linux` ou `-macos`), que fica fora do
-  git. Não renomeie para só `agente-gerador`: esse nome é o da pasta de trabalho que ele cria.
+  O resultado sai em `dist/` (`agente-gerador-windows.exe`, `-linux` ou `-macos`, mais as cópias
+  `agente-treinador-*` e `agente-instalador-*`), que fica fora do git. No Windows, o
+  `agente-instalador` tem o subsistema trocado para "janela" no cabeçalho PE
+  (`setWindowsSubsystem`), para não abrir o terminal. Não renomeie para só `agente-gerador`: esse nome é o da pasta de trabalho que ele cria.
 - Como o executável funciona por dentro:
   1. O Node "single executable application" leva um recurso `pacote.json` com os arquivos de
      `bin/`, `src/`, `widget/` e `templates/`.
@@ -116,4 +128,5 @@ contra os 100 MB do executável.
 - O CI (job `executavel`) gera o executável no Windows, no Linux e no macOS a cada PR e roda o
   arquivo dentro de uma cópia do site de exemplo, numa pasta com espaço no nome.
 - **Publicar uma versão:** crie a tag `vX.Y.Z` ou abra Actions > "Publicar executáveis" > Run
-  workflow. A Release fica com os 3 executáveis e os 2 lançadores.
+  workflow. A Release fica com os 9 executáveis (instalador, gerador e treinador para cada sistema) e os 2
+  lançadores.

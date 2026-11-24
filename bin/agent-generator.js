@@ -13,13 +13,14 @@ import { generateKnowledge } from "../src/generator/index.js";
 import { buildPrompt, parseAiAnswer, mergeAi, askGemini } from "../src/generator/ai.js";
 import { install, detectTarget, injectTags, readKnowledge, writeKnowledge, snippetFor, entryPages } from "../src/installer/index.js";
 import { runAssistant, staticRoot, openBrowser } from "../src/cli/assistente.js";
+import { planUninstall, runUninstall } from "../src/installer/uninstall.js";
 import { summarize, applyObservation, observationText } from "../src/observe/learn.js";
 import { findUpstream, runSession } from "../src/observe/session.js";
 import { applyCorrection, trainingBase, trainingText } from "../src/train/apply.js";
 import { evaluateKnowledge, evaluationText } from "../src/eval/index.js";
 import { evaluationHtml } from "../src/eval/html.js";
 import { createAgent } from "../src/agent/agent.js";
-import { checkKnowledge } from "../src/agent/knowledge.js";
+import { checkKnowledge, RECURSOS } from "../src/agent/knowledge.js";
 import { readMissFiles, groupMisses, suggestFor, learnText, correctionFor } from "../src/learn/misses.js";
 import { startEditor } from "../src/editor/server.js";
 import { buildFromSite } from "../src/site/index.js";
@@ -27,7 +28,7 @@ import { USER_AGENT } from "../src/crawler/index.js";
 import { buildDomain, enrichFromObservation, sectorKnowledge, SECTOR_IDS } from "../src/domain/index.js";
 import { detectSector, textsFromReport } from "../src/domain/detect.js";
 
-const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", auto: "assistente", wizard: "assistente", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
+const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", uninstall: "desinstalar", remover: "desinstalar", auto: "assistente", wizard: "assistente", installer: "instalador", gui: "instalador", janela: "instalador", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
 const WORK = "agente-gerador";
 
 export function parseArgs(argv) {
@@ -49,9 +50,17 @@ const HELP = `agent-generator — cria um agente (chatbot) para o seu site a par
 Uso: agent-generator <comando> <pasta-do-projeto> [opções]
 
 Comandos:
+  instalador [pasta]       (0.9) Instalador visual: uma janela com as etapas (pasta, raio X,
+                           funcionalidades com checkbox, aparência, instalação e teste) e a
+                           etapa 2 (treino assistido, observação e editor). É o que o
+                           executável "agente-instalador" abre com duplo clique.
   assistente [pasta]       Guiado, com perguntas de sim/não: raio X, base, instalação, widget nas
                            páginas, avaliação e teste no navegador. É o que o executável faz
                            com duplo clique. Sem pasta, usa a pasta atual.
+  desinstalar [pasta]      (0.9) Encontra o agente criado aqui e desfaz a instalação: tira a linha
+                           do widget das páginas e apaga a pasta do agente (a base é guardada antes
+                           em agente-gerador/backup). Pede confirmação; --sim confirma; --tudo
+                           apaga também agente-gerador/. O instalador visual oferece o mesmo.
   criar <pasta>            Tudo de uma vez: analisar + gerar + instalar + avaliar
   analisar <pasta>         Raio X do projeto (agente-gerador/relatorio.json)
   gerar <pasta>            Cria a base de conhecimento a partir do relatório
@@ -98,6 +107,8 @@ Opções:
   --variacoes         (avaliar) Testa também variações geradas: sem acento, erro de digitação, informal
   --html              (avaliar) Grava agente-gerador/avaliacao.html (relatório para abrir no navegador)
   --porta <n>         Porta do comando servir (padrão 5173)
+  --tudo              (desinstalar) Apaga também a pasta de trabalho agente-gerador/
+  --janela            (instalador) Sem terminal: encerra sozinho 3 min depois que a janela fecha
   --sim               (assistente) Responde o padrão a todas as perguntas, sem abrir navegador
   --sem-pausa         (assistente) Não espera Enter no final
   --url <endereço>    (observar/treinar) Site já rodando, ex.: http://localhost:3000
@@ -564,6 +575,30 @@ async function cmdEditar(ctx, io) {
   return editor;
 }
 
+// Versão 0.9: desinstalar. Mostra o que vai sair e pede confirmação (ou --sim).
+function uninstallPlanText(plan) {
+  if (!plan.instalado) return "Não encontrei um agente criado pelo agent-generator neste projeto.";
+  return [
+    "Agente encontrado neste projeto. A desinstalação vai:",
+    ...(plan.pasta ? [`  - apagar a pasta ${plan.pasta.rel}/ (${plan.pasta.arquivos} arquivos; a base de conhecimento é guardada antes)`] : []),
+    ...(plan.paginas.length ? [`  - tirar a linha do widget de: ${plan.paginas.join(", ")}`] : []),
+    `  - ${plan.trabalho.existe ? `${plan.trabalho.rel}/ ${"fica (relatórios e backups)"}; com --tudo, é apagada também` : "sem pasta de trabalho"}`,
+    ...(plan.referencias.length ? [`  ! Linha colada à mão (remova você): ${plan.referencias.join(", ")}`] : []),
+  ].join("\n");
+}
+async function cmdDesinstalar(ctx, io) {
+  const plan = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
+  if (!ctx.flags.json) io.print(uninstallPlanText(plan));
+  if (!plan.instalado) return { plan, feito: false };
+  const ok = ctx.flags.sim || (io.question && (await io.ask("\nDesinstalar o agente deste projeto?", false)));
+  if (!ok) {
+    if (!ctx.flags.json) io.print(io.question ? "Nada foi alterado." : "Nada foi alterado. Para confirmar sem perguntas, use --sim.");
+    return { plan, feito: false };
+  }
+  const r = await runUninstall(ctx.project, plan, { apagarTrabalho: Boolean(ctx.flags.tudo) });
+  return { plan, feito: true, ...r };
+}
+
 async function cmdAssistente(ctx) {
   const interactive = Boolean(process.stdin.isTTY) && !ctx.flags.sim;
   const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
@@ -585,6 +620,8 @@ async function cmdAssistente(ctx) {
     gemini: () => cmdGemini(ctx),
     conversar: () => cmdConversar(ctx, [], rl),
     observar: () => cmdObservar(ctx, io),
+    planoDesinstalar: () => planUninstall(ctx.project, { config: ctx.config, work: ctx.work }),
+    desinstalar: (plan) => runUninstall(ctx.project, plan),
     async servir(root) {
       const port = await listenFree(staticServer(root), Number(ctx.flags.porta) || 5173);
       return `http://localhost:${port}/`;
@@ -593,6 +630,237 @@ async function cmdAssistente(ctx) {
   const result = await runAssistant({ project: ctx.project, work: ctx.work, io, steps, hasGemini: Boolean(process.env.GEMINI_API_KEY) });
   if (result.status === "servindo") rl?.close();
   return result;
+}
+
+// Versão 0.9: instalador visual (janela com etapas e checkboxes) no lugar das perguntas no
+// terminal. Usa os mesmos passos do assistente; depois de instalar, continua aberto para a etapa 2.
+const RECURSO_INFO = {
+  catalogo: ["Produtos, serviços e preços", "Responde sobre o catálogo (nome, preço, categoria) e compara itens.", false],
+  busca: ["Usar a busca do site", "Quando a pessoa procura algo, monta o link da busca do próprio site.", false],
+  conta: ["Consultar dados da conta", "Pedidos, agendamentos ou reservas de quem está logado, lidos da API do site com a sessão da pessoa. Nada fica salvo.", true],
+  perfil: ["Respostas com os dados de quem está logado", "Ex.: \"como está a obra do meu apartamento?\". Os dados ficam só na aba do navegador.", true],
+  formularios: ["Explicar formulários e levar até eles", "Agendar, contato, cadastro, orçamento: diz o que preencher e abre a página certa. Nunca envia nada.", false],
+  fotos: ["Mostrar fotos no chat", "Galerias por etapa ou categoria encontradas nas páginas.", false],
+  fluxos: ["Conversas em etapas", "Perguntas com opções (ex.: escolher tamanho, depois entrega). Você cria no treino da etapa 2.", false],
+};
+const CATEGORIA_TEXTO = { pagamento: "pagamento", alteracao: "cancelar/excluir", autenticacao: "login/senha", dados_da_conta: "dados da conta", dados_pessoais: "dados pessoais", escrita: "envio de dados", consulta: "consulta" };
+
+function recursosDe(knowledge, perfilAtual) {
+  const k = knowledge;
+  const disp = {
+    catalogo: [k.catalogo.itens.length > 0 || Boolean(k.catalogo.url), k.catalogo.url ? `catálogo vivo pela API ${k.catalogo.url}` : `${k.catalogo.itens.length} ${k.catalogo.rotulo || "itens"}`],
+    busca: [k.consultas.buscas.length > 0, k.consultas.buscas.map((b) => b.rotulo).join(", ")],
+    conta: [k.consultas.dados.length > 0, k.consultas.dados.map((d) => d.rotulo).join(", ")],
+    perfil: [k.perfil.perguntas.length > 0, `${k.perfil.perguntas.length} modelo(s) de pergunta do setor`],
+    formularios: [k.interacoes.length > 0, k.interacoes.map((x) => x.titulo).slice(0, 4).join(", ")],
+    fotos: [k.midias.galerias.length > 0, `${k.midias.galerias.length} galeria(s)`],
+    fluxos: [true, k.fluxos.length ? `${k.fluxos.length} conversa(s) criada(s)` : "criadas no treino (etapa 2)"],
+  };
+  return RECURSOS.map((id) => {
+    const [titulo, descricao, sensivel] = RECURSO_INFO[id];
+    const [disponivel, detalhe] = disp[id];
+    const ligado = k.agente.recursos[id] !== false;
+    // Sensíveis começam como estão hoje na base; perfil só vem marcado se já estava ligado.
+    const padrao = disponivel && (id === "perfil" ? Boolean(perfilAtual?.ativo) && ligado : ligado);
+    return { id, titulo, descricao, sensivel, disponivel, detalhe: disponivel ? detalhe || "" : "não encontrado neste projeto", padrao };
+  });
+}
+
+async function cmdInstalador(flags, pasta) {
+  const { startInstaller } = await import("../src/gui/server.js");
+  const { openWindow } = await import("../src/gui/janela.js");
+  const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const rel = (ctx, f) => relative(ctx.project, f).split(sep).join("/") || ".";
+  const FRAMEWORKS = ["Next.js", "Nuxt", "SvelteKit", "Astro", "Angular"];
+  const ops = {
+    async abrir(p) {
+      if (!p) throw new Error("Informe a pasta do projeto.");
+      // A porta e o --janela são do instalador; o resto (site, editor, treino) usa as portas padrão.
+      const { porta, janela, ...resto } = flags;
+      const ctx = await context(p, resto);
+      const has = async (f) => Boolean(await stat(join(ctx.project, f)).catch(() => null));
+      const info = { pasta: ctx.project, temIndex: await has("index.html"), temPackage: await has("package.json"), temBase: false, jaInstalado: Boolean(ctx.config.destino) };
+      if (ctx.config.destino) info.temBase = Boolean(await stat(join(resolve(ctx.project, ctx.config.destino), "conhecimento", "agente.json")).catch(() => null));
+      // Versão 0.9: agente criado por nós já instalado aqui? Então a janela oferece desinstalar.
+      const plan = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
+      Object.assign(info, { instalado: plan.instalado, pastaAgente: plan.pasta?.rel || "" });
+      if (plan.pasta) info.temBase = true;
+      return { ctx, info };
+    },
+    async planoDesinstalar(ctx) {
+      const p = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
+      return { instalado: p.instalado, pasta: p.pasta && { rel: p.pasta.rel, arquivos: p.pasta.arquivos }, paginas: p.paginas, referencias: p.referencias, trabalho: { rel: p.trabalho.rel, existe: p.trabalho.existe } };
+    },
+    async desinstalar(ctx, escolhas, log) {
+      log("Conferindo o que existe do agente...", 5);
+      const plan = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
+      if (!plan.instalado) throw new Error("Não há agente instalado nesta pasta.");
+      return runUninstall(ctx.project, plan, { apagarTrabalho: escolhas.apagarTrabalho === true, log });
+    },
+    async analisar(ctx, log, { setor } = {}) {
+      log("Lendo os arquivos do projeto (só leitura)...", 10);
+      if (setor !== undefined) {
+        if (setor && !SECTOR_IDS.includes(setor)) throw new Error(`Setor desconhecido: ${setor}`);
+        ctx.flags.setor = setor || undefined;
+      }
+      const { report } = await cmdAnalisar(ctx);
+      log(`${report.resumo.paginas} páginas, ${report.resumo.formularios} formulários e ${report.resumo.itensCatalogo} itens de catálogo encontrados.`, 55);
+      const t = await target(ctx, report.projeto.stack);
+      const atual = await readKnowledge(t.dir);
+      const temBase = Boolean(atual.faq || atual.agente);
+      log("Montando a prévia da base de conhecimento...", 75);
+      const preview = generateKnowledge(report, { setor: chosenSector(ctx) }).knowledge;
+      const base = temBase ? checkKnowledge(atual).knowledge : preview;
+      const deteccao = detectSector(textsFromReport(report));
+      const entries = await entryPages(ctx.project);
+      const framework = report.projeto.stack.find((s) => FRAMEWORKS.includes(s)) || "";
+      const criticas = preview.acoes.candidatas.filter((c) => c.risco !== "medio");
+      const porCategoria = {};
+      for (const c of criticas) porCategoria[CATEGORIA_TEXTO[c.categoria] || c.categoria] = (porCategoria[CATEGORIA_TEXTO[c.categoria] || c.categoria] || 0) + 1;
+      log("Pronto.", 100);
+      return {
+        site: report.projeto.site,
+        stack: report.projeto.stack,
+        resumo: report.resumo,
+        avisos: report.avisos || [],
+        setor: { detectado: deteccao.setor, escolhido: chosenSector(ctx) || "", atual: base.setor.id, nome: base.setor.nome, ranking: deteccao.ranking.slice(0, 4).map(({ id, nome, pontos, evidencias }) => ({ id, nome, pontos, evidencias: evidencias.slice(0, 3) })) },
+        setores: SECTOR_IDS,
+        destino: { dir: rel(ctx, t.dir), publicPath: t.publicPath, motivo: t.why },
+        temBase,
+        paginasEntrada: entries.map((f) => rel(ctx, f)),
+        framework,
+        manual: !entries.length || Boolean(framework),
+        recursos: recursosDe(base, base.perfil),
+        perfilFonte: base.perfil.fonte || "",
+        criticas: { total: criticas.length, porCategoria, exemplos: criticas.slice(0, 6).map((c) => ({ metodo: c.metodo, caminho: c.caminho, categoria: CATEGORIA_TEXTO[c.categoria] || c.categoria, risco: c.risco })) },
+        agente: { nome: base.agente.nome, cor: base.agente.cor, tom: base.agente.tom, posicao: base.agente.posicao, saudacao: base.agente.saudacao },
+        gemini: Boolean(process.env.GEMINI_API_KEY),
+      };
+    },
+    async instalar(ctx, escolhas, log) {
+      log("Preparando...", 5);
+      const report = await loadReport(ctx);
+      const g = await cmdGerar(Object.assign(ctx, { flags: { ...ctx.flags, forcar: Boolean(escolhas.regerar) } }));
+      log(g.backup ? `Base anterior guardada em ${rel(ctx, g.backup)}.` : g.kept.length ? "Base existente mantida (nada do que você editou foi apagado)." : "Base de conhecimento criada a partir do raio X.", 30);
+      // Funcionalidades marcadas e personalização vão para agente.json (e perfil.json).
+      const raw = await readKnowledge(g.target.dir);
+      const { knowledge } = checkKnowledge(raw);
+      const recursos = { ...knowledge.agente.recursos };
+      for (const id of RECURSOS) if (typeof escolhas.recursos?.[id] === "boolean") recursos[id] = escolhas.recursos[id];
+      const p = escolhas.agente || {};
+      const agente = { ...raw.agente, recursos };
+      if (typeof p.nome === "string" && p.nome.trim()) agente.nome = p.nome.trim().slice(0, 80);
+      if (/^#[0-9a-f]{6}$/i.test(p.cor || "")) agente.cor = p.cor;
+      if (["amigavel", "formal", "neutro"].includes(p.tom)) agente.tom = p.tom;
+      if (["direita", "esquerda"].includes(p.posicao)) agente.posicao = p.posicao;
+      if (typeof p.saudacao === "string" && p.saudacao.trim()) agente.saudacao = p.saudacao.trim().slice(0, 600);
+      const mudancas = { agente };
+      // Setor trocado na janela com a base mantida: só o setor.json muda (como no comando setor).
+      if (ctx.flags.setor) {
+        if (g.kept.length && !escolhas.regerar) mudancas.setor = sectorKnowledge(detectSector(textsFromReport(report), { forcar: ctx.flags.setor }));
+        await saveConfig(ctx, { setor: ctx.flags.setor });
+      }
+      if (typeof escolhas.recursos?.perfil === "boolean") {
+        const perfil = { ...knowledge.perfil, ativo: escolhas.recursos.perfil };
+        const fonte = typeof escolhas.perfilFonte === "string" ? escolhas.perfilFonte.trim() : "";
+        if (fonte) {
+          if (!/^\/(?!\/)/.test(fonte)) throw new Error("O endereço dos dados do usuário precisa ser um caminho do próprio site, ex.: /api/minha-conta");
+          perfil.fonte = fonte;
+        }
+        mudancas.perfil = perfil;
+      }
+      await writeKnowledge(g.target.dir, mudancas, { force: true });
+      const ligadas = RECURSOS.filter((id) => recursos[id]).map((id) => RECURSO_INFO[id][0]);
+      log(`Funcionalidades ligadas: ${ligadas.join(", ") || "só as respostas básicas"}.`, 45);
+      const inst = await cmdInstalar(Object.assign(ctx, { flags: { ...ctx.flags, inserir: false } }), { report });
+      log(`Núcleo, widget e base copiados para ${rel(ctx, inst.dir)}/.`, 60);
+      let inseridas = [];
+      let snippet = "";
+      const entries = await entryPages(ctx.project);
+      const framework = report.projeto.stack.find((s) => FRAMEWORKS.includes(s));
+      if (escolhas.inserir !== false && entries.length && !framework) {
+        const res = await injectTags(ctx.project, inst.publicPath, { backupDir: join(ctx.work, "backup", "html") });
+        inseridas = res.changed.map((f) => rel(ctx, f));
+        log(inseridas.length ? `Linha do widget inserida em ${inseridas.length} página(s) (cópia em agente-gerador/backup/html).` : "As páginas já tinham a linha do widget.", 75);
+      } else {
+        snippet = inst.snippet;
+        await mkdir(ctx.work, { recursive: true });
+        await writeFile(join(ctx.work, "COMO-LIGAR.txt"), `${snippet}\n`);
+        log("Falta um passo manual: colar a linha do widget (veja agente-gerador/COMO-LIGAR.txt).", 75);
+      }
+      log("Testando a base com as próprias perguntas...", 85);
+      let ev = await cmdAvaliar(ctx);
+      if (escolhas.gemini && process.env.GEMINI_API_KEY) {
+        try {
+          log("Melhorando a base com o Gemini...", 90);
+          await cmdGemini(ctx);
+          ev = await cmdAvaliar(ctx);
+        } catch (error) {
+          log(`O Gemini não respondeu (${error.message}). A base sem IA continua valendo.`);
+        }
+      }
+      const resumo = [
+        `Agente instalado em ${rel(ctx, inst.dir)}/.`,
+        `Funcionalidades: ${ligadas.join(", ") || "respostas básicas"}.`,
+        inseridas.length ? `Widget ligado em: ${inseridas.join(", ")}.` : snippet ? "Ligar o widget: veja agente-gerador/COMO-LIGAR.txt." : "As páginas já tinham o widget.",
+        `Acerto da base: ${ev.geral ?? "-"}%.`,
+        ...(g.backup ? [`Backup da base anterior: ${rel(ctx, g.backup)}`] : []),
+      ];
+      await writeFile(
+        join(ctx.work, "RESUMO.txt"),
+        `Agent Generator ${version} (instalador) - ${new Date().toLocaleString("pt-BR")}\nProjeto: ${ctx.project}\n\nFeito:\n${resumo.map((r) => `- ${r}`).join("\n")}\n\nPróximo passo: etapa 2 (treino assistido) no instalador ou com "agent-generator treinar".\n`,
+      );
+      log(`Pronto! Acerto da base: ${ev.geral ?? "-"}%.`, 100);
+      const root = await staticRoot(ctx.project, entries);
+      return { dir: rel(ctx, inst.dir), publicPath: inst.publicPath, inseridas, snippet, geral: ev.geral, porcentagens: ev.porcentagens, resumo, podeAbrirSite: Boolean(root && !framework) };
+    },
+    async testar(ctx, mensagem, contexto) {
+      const { raw } = await currentKnowledge(ctx);
+      const agent = createAgent(raw);
+      const r = mensagem ? agent.reply(mensagem, contexto) : { ...agent.saudacao(), contexto: {} };
+      return { texto: r.texto, itens: (r.itens || []).slice(0, 4).map((i) => ({ nome: i.nome, precoTexto: i.precoTexto, link: i.link })), acoes: r.acoes || [], sugestoes: r.sugestoes || [], intencao: r.intencao || "", confianca: r.confianca ?? null, contexto: r.contexto || {} };
+    },
+    async abrirSite(ctx) {
+      const root = await staticRoot(ctx.project, await entryPages(ctx.project));
+      if (!root) throw new Error("Este projeto não é um site HTML simples. Rode o site do seu jeito (ex.: npm run dev) e use a etapa 2.");
+      const s = await serveStatic(ctx, root);
+      openBrowser(s.url);
+      return { ...s, origem: rel(ctx, root) };
+    },
+    async sessao(ctx, modo, opcoes, io) {
+      Object.assign(ctx.flags, { url: opcoes.url || undefined, minutos: opcoes.minutos, "sem-navegador": Boolean(flags["sem-navegador"]) });
+      const r = modo === "observar" ? await cmdObservar(ctx, io) : await cmdTreinar(ctx, io);
+      return modo === "observar"
+        ? { texto: r.texto, antes: r.antes, depois: r.geral }
+        : { texto: r.texto, antes: r.antes, depois: r.depois, correcoes: r.log.filter((l) => l.tipo === "correcao").length, certas: r.log.filter((l) => l.tipo === "ok").length };
+    },
+    async editor(ctx) {
+      // A janela do instalador abre o editor numa aba nova (sem abrir duas vezes).
+      return cmdEditar({ ...ctx, flags: { ...ctx.flags, "sem-navegador": true } }, { print: () => {} });
+    },
+    async acerto(ctx) {
+      const { raw } = await currentKnowledge(ctx);
+      return evaluateKnowledge(raw).geral;
+    },
+  };
+  const janela = Boolean(flags.janela);
+  let fim;
+  const terminou = new Promise((ok) => (fim = ok));
+  const inst = await startInstaller({
+    ops,
+    pasta,
+    versao: version,
+    port: Number(flags.porta) || 4730,
+    listen: listenFree,
+    // Sem terminal (executável "instalador"), fecha sozinho 3 min depois que a janela some.
+    vivoMs: janela ? 180_000 : 0,
+    onFim: (motivo) => fim(motivo),
+  });
+  console.log(`Instalador aberto em ${inst.url}\n(se a janela não abriu, copie o endereço no navegador). Feche esta janela ou use o botão "Fechar" do instalador para encerrar.`);
+  if (!flags["sem-navegador"]) openWindow(inst.url);
+  const motivo = await terminou;
+  console.log(`Instalador encerrado (${motivo}).`);
+  return 0;
 }
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon", ".txt": "text/plain; charset=utf-8" };
@@ -699,7 +967,8 @@ export async function main(argv = process.argv.slice(2)) {
     return 0;
   }
   if (command === "site") return cmdSite(_[1], _[2], flags);
-  const ctx = await context(["assistente", "observar", "treinar", "aprender", "editar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
+  if (command === "instalador") return cmdInstalador(flags, _[1] || process.cwd());
+  const ctx = await context(["assistente", "observar", "treinar", "aprender", "editar", "desinstalar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
   switch (command) {
     case "assistente": {
       const r = await cmdAssistente(ctx);
@@ -744,6 +1013,17 @@ export async function main(argv = process.argv.slice(2)) {
         return 0;
       }
       return null;
+    }
+    case "desinstalar": {
+      const rl = process.stdin.isTTY && !flags.sim ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+      const io = makeIo(ctx, rl);
+      try {
+        const r = await cmdDesinstalar(ctx, io);
+        print(ctx, r, r.feito ? `\nPronto:\n${r.resumo.map((x) => `- ${x}`).join("\n")}` : "");
+      } finally {
+        rl?.close();
+      }
+      return 0;
     }
     case "perfil": {
       const r = await cmdPerfil(ctx);

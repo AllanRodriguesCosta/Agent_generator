@@ -19,7 +19,7 @@ export function openBrowser(url, platform = process.platform) {
   const [cmd, args] =
     platform === "win32" ? ["cmd", ["/c", "start", "", url]] : platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
   try {
-    spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+    spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
     return true;
   } catch {
     return false;
@@ -36,7 +36,7 @@ export function summaryText(lines) {
  *     Sem terminal (ou com --sim) ask devolve o padrão; com soInterativo, devolve false.
  * steps: { analisar, target, gerar({force}), instalar({report}), entryPages, inject(backupDir, publicPath),
  *          avaliar, gemini, conversar, servir(pasta) -> url }
- * Devolve { status: "concluido" | "cancelado" | "servindo", resumo }.
+ * Devolve { status: "concluido" | "cancelado" | "servindo" | "desinstalado", resumo }.
  */
 export async function runAssistant({ project, work, io, steps, hasGemini = false }) {
   const done = [];
@@ -65,6 +65,16 @@ export async function runAssistant({ project, work, io, steps, hasGemini = false
   io.print(`\n2/5  O agente vai ficar em: ${rel(target.dir)}/  (${target.why})`);
   let force = false;
   if (hasBase) {
+    io.print("     Já existe um agente criado pelo Agent Generator neste projeto.");
+    // Versão 0.9: em vez de atualizar, dá para desinstalar (só com alguém respondendo; --sim nunca desinstala).
+    if (steps.desinstalar && (await io.ask("     Quer DESINSTALAR o agente deste projeto (tirar o widget das páginas e apagar a pasta do agente)?", false, { soInterativo: true }))) {
+      const plan = await steps.planoDesinstalar();
+      const r = await steps.desinstalar(plan);
+      io.print("\nAgente desinstalado:");
+      for (const line of r.resumo) io.print(`  - ${line}`);
+      await io.pause();
+      return { status: "desinstalado", resumo: r.resumo };
+    }
     io.print("     Já existe uma base de conhecimento ali (talvez editada à mão).");
     force = await io.ask("     Regerar a base do zero? A atual vai para agente-gerador/backup.", false);
   }

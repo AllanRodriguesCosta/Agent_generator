@@ -39,7 +39,7 @@ export async function devScript(project) {
 
 function stopChild(child) {
   if (!child || child.exitCode != null) return;
-  if (process.platform === "win32") execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], () => {});
+  if (process.platform === "win32") execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {});
   else {
     try {
       process.kill(-child.pid, "SIGTERM");
@@ -53,7 +53,7 @@ function stopChild(child) {
 export function startProject(project, script, { timeout = 90_000, log = () => {} } = {}) {
   return new Promise((resolve, reject) => {
     const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-    const child = spawn(npm, ["run", script], { cwd: project, shell: process.platform === "win32", detached: process.platform !== "win32", env: { ...process.env, BROWSER: "none", FORCE_COLOR: "0" } });
+    const child = spawn(npm, ["run", script], { cwd: project, shell: process.platform === "win32", windowsHide: true, detached: process.platform !== "win32", env: { ...process.env, BROWSER: "none", FORCE_COLOR: "0" } });
     let output = "";
     const timer = setTimeout(async () => {
       for (const port of COMMON_PORTS) if (await probe(`http://localhost:${port}/`)) return resolve({ url: `http://localhost:${port}/`, stop: () => stopChild(child) });

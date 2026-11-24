@@ -96,8 +96,38 @@ export async function buildExe() {
   await rm(trainer, { force: true });
   await copyFile(exe, trainer);
   if (!win) await chmod(trainer, 0o755);
-  console.log(`\nExecutáveis prontos: ${exe} e ${trainer}`);
+  // Versão 0.9: instalador visual. Mesmo binário com "instalador" no nome; no Windows ele vira um
+  // programa de janela (subsistema GUI), para o duplo clique não abrir o terminal.
+  const installer = join(DIST, exeName(process.platform, "instalador"));
+  await rm(installer, { force: true });
+  if (win) {
+    const buf = await readFile(exe);
+    setWindowsSubsystem(buf, 2);
+    await writeFile(installer, buf);
+  } else {
+    await copyFile(exe, installer);
+    await chmod(installer, 0o755);
+  }
+  console.log(`\nExecutáveis prontos: ${exe}, ${trainer} e ${installer}`);
   return exe;
+}
+
+/**
+ * Troca o subsistema de um executável do Windows (2 = janela/GUI, 3 = terminal/console) direto
+ * no cabeçalho PE. Devolve o valor anterior. Assinatura digital não existe aqui (o Node copiado
+ * já perdeu a dele ao receber o pacote), então nada mais precisa mudar.
+ */
+export function setWindowsSubsystem(buf, subsystem = 2) {
+  if (buf.length < 0x40 || buf.readUInt16LE(0) !== 0x5a4d) throw new Error("Não é um executável do Windows (falta MZ).");
+  const pe = buf.readUInt32LE(0x3c);
+  if (pe + 24 + 70 > buf.length || buf.readUInt32LE(pe) !== 0x00004550) throw new Error("Cabeçalho PE não encontrado.");
+  const opt = pe + 24;
+  const magic = buf.readUInt16LE(opt);
+  if (magic !== 0x10b && magic !== 0x20b) throw new Error("Cabeçalho opcional PE desconhecido.");
+  const at = opt + 68; // mesmo deslocamento em PE32 e PE32+
+  const before = buf.readUInt16LE(at);
+  buf.writeUInt16LE(subsystem, at);
+  return before;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
