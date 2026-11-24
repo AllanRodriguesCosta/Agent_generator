@@ -46,7 +46,8 @@ test("conversa: cumprimento, FAQ com outras palavras, página, contato, catálog
 test("catálogo: assunto + preço máximo, mais opções, nada no orçamento e erro de digitação", () => {
   const cafes = ask("quero um café");
   assert.equal(cafes.intencao, "catalogo");
-  assert.deepEqual(cafes.itens.map((i) => i.id), ["cafe-cerrado", "cafe-mantiqueira", "cafe-parana"]);
+  // 0.10: a ordem entre itens igualmente relevantes vem do BM25 (o texto mais focado primeiro).
+  assert.deepEqual(cafes.itens.map((i) => i.id).sort(), ["cafe-cerrado", "cafe-mantiqueira", "cafe-parana"]);
   const cheap = ask("quero um café até 50 reais");
   assert.deepEqual(cheap.itens.map((i) => [i.id, i.precoTexto.replace(/\s/g, " ")]), [["cafe-cerrado", "R$ 42,90"]]);
   assert.match(ask("tem algo até 20 reais").texto, /Não encontrei produtos até R\$\s20,00\. O mais em conta é Caneca/);

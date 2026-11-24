@@ -1,6 +1,10 @@
 // Busca por palavras em comum com peso maior para as raras (IDF), a mesma ideia da busca na
 // Central de Ajuda da Violet Voltage. Cada documento tem um texto principal (vale inteiro) e um
 // secundário (vale 30%). Palavra com erro de digitação vira a mais próxima do índice.
+// Versão 0.10: a ORDEM dos resultados é dada pelo BM25 (Robertson e Zaragoza, 2009): palavra
+// repetida conta mais, com saturação (k1), e texto comprido é normalizado pelo tamanho (b), o que
+// evita que conteúdos longos e catálogos grandes ganhem só por terem muitas palavras. A
+// "cobertura" (ratio: quanto da frase o documento cobre) continua decidindo se a resposta é forte.
 import { tokens, STOPWORDS, stem } from "./text.js";
 
 // Palavras de pergunta não ajudam a achar o assunto ("como", "onde", "qual"...).
@@ -9,6 +13,15 @@ const QUESTION_WORDS = new Set([
   "qual", "quais", "qua", "quand", "ond", "porqu", "pod", "poss", "consig", "fac", "faz", "algum", "sab", "saber", "quer", "voc", "com", "tem", "ter", "exist",
   "vej", "ver", "ach", "encontr", "fic", "acess", "abr", "mostr", "precis", "gostari", "dig", "diz", "sei", "algu", "cois", "favor", "porfav",
 ]);
+
+// Palavras (raízes) de um texto com repetição, para a frequência do BM25.
+const termList = (value) =>
+  tokens(value)
+    .filter((t) => t.length > 1 && !STOPWORDS.has(t))
+    .map(stem)
+    .filter((s) => !QUESTION_WORDS.has(s));
+const counts = (list) => list.reduce((m, t) => m.set(t, (m.get(t) || 0) + 1), new Map());
+export const BM25 = { k1: 1.2, b: 0.75 };
 
 export const terms = (value) => [
   ...new Set(
@@ -38,13 +51,27 @@ function distance(a, b) {
 // da base setorial; uma palavra da frase também procura as outras do grupo.
 export function createIndex(documents, { sinonimos = [] } = {}) {
   const index = documents.map((doc) => {
-    const main = new Set(terms(doc.principal));
-    const mid = new Set(terms(doc.medio || "").filter((t) => !main.has(t)));
-    return { doc, main, mid, extra: new Set(terms(doc.secundario || "")) };
+    const mainList = termList(doc.principal);
+    const main = new Set(mainList);
+    const midList = termList(doc.medio || "").filter((t) => !main.has(t));
+    const extraList = termList(doc.secundario || "");
+    return {
+      doc,
+      main,
+      mid: new Set(midList),
+      extra: new Set(extraList),
+      tf: [counts(mainList), counts(midList), counts(extraList)],
+      len: [mainList.length, midList.length, extraList.length],
+    };
   });
   const df = new Map();
   for (const { main, mid, extra } of index) for (const s of new Set([...main, ...mid, ...extra])) df.set(s, (df.get(s) || 0) + 1);
   const idf = (s) => Math.log(1 + index.length / (df.get(s) || 0.5));
+  // BM25: IDF probabilístico e tamanho médio de cada campo (título, termos, texto).
+  const N = index.length;
+  const idfBm25 = (s) => Math.log(1 + (N - (df.get(s) || 0) + 0.5) / ((df.get(s) || 0) + 0.5));
+  const avg = [0, 1, 2].map((f) => index.reduce((sum, i) => sum + i.len[f], 0) / (N || 1) || 1);
+  const tfNorm = (tf, len, f) => (tf * (BM25.k1 + 1)) / (tf + BM25.k1 * (1 - BM25.b + (BM25.b * len) / avg[f]));
   const mainVocabulary = new Set(index.flatMap((i) => [...i.main, ...i.mid]));
   // Variantes de cada palavra da frase. Fora dos títulos/perguntas: a mais próxima por digitação
   // (1 letra; 2 nas longas) ou as que começam igual ("pag" → "pagament").
@@ -94,6 +121,7 @@ export function createIndex(documents, { sinonimos = [] } = {}) {
       if (tipo && item.doc.tipo !== tipo) continue;
       let score = 0;
       let hits = 0;
+      let bm25 = 0;
       for (const [qi, vs] of query.entries()) {
         // Melhor entre título (1), termos (0,7) e texto (0,3); palavra escrita vale mais que
         // sinônimo, então "shipping" nos termos vence "frete" (sinônimo) no título.
@@ -109,12 +137,30 @@ export function createIndex(documents, { sinonimos = [] } = {}) {
         const extra = part(item.extra, 0.3);
         score += Math.max(main, mid, extra);
         if (main || mid) hits++;
+        // BM25 do termo: melhor campo, com o mesmo peso de campo e o desconto do sinônimo.
+        let best = 0;
+        for (const [f, w] of [[0, 1], [1, 0.7], [2, 0.3]]) {
+          for (const v of vs) {
+            const tf = item.tf[f].get(v);
+            if (!tf) continue;
+            best = Math.max(best, w * (own[qi].has(v) ? 1 : 0.6) * idfBm25(v) * tfNorm(tf, item.len[f], f));
+          }
+        }
+        bm25 += best;
       }
-      if (score > 0) results.push({ doc: item.doc, score, hits, ratio: score / total, query: query.length });
+      if (score > 0) results.push({ doc: item.doc, score, hits, ratio: score / total, query: query.length, bm25 });
     }
-    return results.sort((a, b) => b.score - a.score || b.hits - a.hits).slice(0, limit);
+    // Ordem: cobertura arredondada primeiro (quem cobre mais da frase vem antes), BM25 desempata
+    // entre os que cobrem o mesmo tanto (o texto mais focado no assunto ganha do mais comprido).
+    const band = (r) => Math.round(r.ratio * 20);
+    return results.sort((a, b) => band(b) - band(a) || b.bm25 - a.bm25 || b.score - a.score || b.hits - a.hits).slice(0, limit);
   }
-  return { search, size: index.length };
+  // Versão 0.10: a base tem estas palavras exatamente (sem correção de digitação)?
+  const knows = (text) => {
+    const ts = terms(text);
+    return ts.length > 0 && ts.every((t) => df.has(t));
+  };
+  return { search, knows, size: index.length };
 }
 
 // Forte o bastante para responder sozinha: boa parte da frase e (em frases maiores) duas palavras.

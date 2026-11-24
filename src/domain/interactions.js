@@ -29,7 +29,9 @@ export const TYPES = [
 ];
 export const typeById = (t) => TYPES.find((x) => x.tipo === t);
 
-const LOGIN_PATH = /(conta|account|perfil|profile|painel|dashboard|meus?-|minha-|area-do-cliente|admin)/i;
+// Caminho de área logada. Palavra inteira: "/contato" não é "/conta" (até a 0.9 o contato era
+// marcado como "pede login" por causa disso).
+const LOGIN_PATH = /(^|[/_.-])(conta|account|perfil|profile|painel|dashboard|area-do-cliente|admin)([/_.-]|$)|(^|\/)(meus?|minhas?)-/i;
 const PRIVATE_FIELD = /\b(senha|password)\b/;
 const joinList = (items) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} e ${items.at(-1)}`);
 const cleanField = (f) =>

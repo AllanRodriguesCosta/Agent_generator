@@ -61,4 +61,41 @@ export function buildMedia(report, { limite = 60 } = {}) {
   return out.filter((g) => g.itens.length);
 }
 
+/**
+ * Versão 0.10: vídeos (YouTube, Vimeo ou arquivo do site) e PDFs (memorial, cardápio, regulamento)
+ * viram cartões no chat. Nada é baixado: só o endereço e o título que a página já mostra.
+ */
+export function buildVideos(report, { limite = 60 } = {}) {
+  const site = report.projeto?.site || "";
+  const out = [];
+  for (const p of report.paginas || [])
+    for (const v of p.videos || []) {
+      const url = v.plataforma === "arquivo" ? resolveSrc(v.url, p.href) : v.url;
+      if (!url || out.some((x) => x.url === url)) continue;
+      const grupo = (cleanTitle(p.titulo, site) || p.href).slice(0, 80);
+      const titulo = (v.titulo || v.etapa || grupo).slice(0, 120);
+      let id = slug(`video-${grupo}-${titulo}`) || `video-${out.length + 1}`;
+      for (let n = 2; out.some((x) => x.id === id); n++) id = `${slug(`video-${grupo}-${titulo}`)}-${n}`;
+      out.push({ id, titulo, grupo, plataforma: v.plataforma, url, link: v.ancora ? `${p.href}#${v.ancora}` : p.href, termos: [v.etapa, grupo].filter(Boolean).join(" ").slice(0, 200) });
+      if (out.length >= limite) return out;
+    }
+  return out;
+}
+export function buildFiles(report, { limite = 80 } = {}) {
+  const site = report.projeto?.site || "";
+  const out = [];
+  for (const p of report.paginas || [])
+    for (const f of p.arquivos || []) {
+      const href = resolveSrc(f.href, p.href);
+      if (!href || out.some((x) => x.href === href)) continue;
+      const grupo = (cleanTitle(p.titulo, site) || p.href).slice(0, 80);
+      const titulo = (f.texto || f.nome || "Arquivo PDF").replace(/^\w/, (c) => c.toUpperCase()).slice(0, 120);
+      let id = slug(`pdf-${titulo}`) || `pdf-${out.length + 1}`;
+      for (let n = 2; out.some((x) => x.id === id); n++) id = `${slug(`pdf-${titulo}`)}-${n}`;
+      out.push({ id, titulo, tipo: "pdf", href, grupo, link: p.href, termos: [f.nome, f.etapa, grupo].filter(Boolean).join(" ").slice(0, 200) });
+      if (out.length >= limite) return out;
+    }
+  return out;
+}
+
 export { pickPhoto } from "../agent/context.js";

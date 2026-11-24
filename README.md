@@ -56,6 +56,13 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
   aberto** para a etapa 2 (treino assistido, observação e editor da base). Se o projeto já tem
   um agente criado por ele, oferece **desinstalar** (tira o widget das páginas e apaga a pasta do
   agente, guardando a base antes). No Windows não abre terminal. Ver [docs/INSTALADOR.md](docs/INSTALADOR.md).
+- **Conversa guiada (0.10):** quando falta uma informação, o agente pergunta ("Fotos da área de
+  lazer de qual empreendimento?") e lembra a resposta; **preenche o formulário do site** com
+  nome e e-mail/telefone perguntados na conversa (a pessoa confere e envia); confirma antes de
+  levar a uma área com login; diz "isso não é com a gente" quando a pergunta é de outro ramo;
+  mostra **vídeos e PDFs** como cartões; "explica melhor" traz o resumo maior; convida uma vez
+  por sessão ("Quer ver as fotos mais recentes desta obra?"); e trata quem tem várias unidades
+  ou pedidos. A busca passou a usar BM25. Ver [docs/CONVERSA-GUIADA.md](docs/CONVERSA-GUIADA.md).
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 

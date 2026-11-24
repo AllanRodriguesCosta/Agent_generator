@@ -125,6 +125,9 @@ export async function scanProject(root, { maxFiles } = {}) {
             blocos: page.blocks,
             // Versão 0.8: fotos de conteúdo (galerias por etapa/categoria).
             imagens: page.images,
+            // Versão 0.10: vídeos e PDFs (cartões no chat).
+            videos: page.videos,
+            arquivos: page.files,
             schema: page.schemaTypes,
             acoesSchema: page.potentialActions,
             botoes: page.buttons,

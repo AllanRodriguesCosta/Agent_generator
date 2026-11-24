@@ -222,6 +222,12 @@ function chosenSector(ctx) {
 }
 
 // Versão 0.7: setor detectado, ranking com evidências e troca manual (--setor).
+// Versão 0.10: texto do site para a lista "fora do escopo" do setor.
+const siteTextOf = (report) => {
+  const t = textsFromReport(report);
+  return [...t.destaque, ...t.corpo].join(" ");
+};
+
 async function cmdSetor(ctx) {
   const report = await loadReport(ctx);
   const detection = detectSector(textsFromReport(report));
@@ -229,7 +235,7 @@ async function cmdSetor(ctx) {
   let applied = null;
   if (forced) {
     const t = await target(ctx, report.projeto.stack);
-    const setor = sectorKnowledge(detectSector(textsFromReport(report), { forcar: forced }));
+    const setor = sectorKnowledge(detectSector(textsFromReport(report), { forcar: forced }), { siteText: siteTextOf(report) });
     const raw = await readKnowledge(t.dir);
     const bkp = Object.keys(raw).length ? await backup(ctx, t.dir) : null;
     await writeKnowledge(t.dir, { setor }, { force: true });
@@ -640,7 +646,8 @@ const RECURSO_INFO = {
   conta: ["Consultar dados da conta", "Pedidos, agendamentos ou reservas de quem está logado, lidos da API do site com a sessão da pessoa. Nada fica salvo.", true],
   perfil: ["Respostas com os dados de quem está logado", "Ex.: \"como está a obra do meu apartamento?\". Os dados ficam só na aba do navegador.", true],
   formularios: ["Explicar formulários e levar até eles", "Agendar, contato, cadastro, orçamento: diz o que preencher e abre a página certa. Nunca envia nada.", false],
-  fotos: ["Mostrar fotos no chat", "Galerias por etapa ou categoria encontradas nas páginas.", false],
+  preencher: ["Preencher formulários com a pessoa", "Pergunta nome e e-mail/telefone na conversa e deixa o formulário do site preenchido; a pessoa confere e envia. Os dados ficam só na aba do navegador.", true],
+  fotos: ["Mostrar fotos, vídeos e PDFs no chat", "Galerias por etapa ou categoria, vídeos (YouTube/Vimeo) e PDFs encontrados nas páginas.", false],
   fluxos: ["Conversas em etapas", "Perguntas com opções (ex.: escolher tamanho, depois entrega). Você cria no treino da etapa 2.", false],
 };
 const CATEGORIA_TEXTO = { pagamento: "pagamento", alteracao: "cancelar/excluir", autenticacao: "login/senha", dados_da_conta: "dados da conta", dados_pessoais: "dados pessoais", escrita: "envio de dados", consulta: "consulta" };
@@ -653,7 +660,11 @@ function recursosDe(knowledge, perfilAtual) {
     conta: [k.consultas.dados.length > 0, k.consultas.dados.map((d) => d.rotulo).join(", ")],
     perfil: [k.perfil.perguntas.length > 0, `${k.perfil.perguntas.length} modelo(s) de pergunta do setor`],
     formularios: [k.interacoes.length > 0, k.interacoes.map((x) => x.titulo).slice(0, 4).join(", ")],
-    fotos: [k.midias.galerias.length > 0, `${k.midias.galerias.length} galeria(s)`],
+    preencher: (() => {
+      const f = k.interacoes.filter((x) => !x.requerLogin && x.campos.some((c) => /e-?mail|telefone|celular|whats|fone|phone/i.test(c)));
+      return [f.length > 0, f.map((x) => x.titulo).slice(0, 3).join(", ")];
+    })(),
+    fotos: [k.midias.galerias.length + k.midias.videos.length + k.midias.arquivos.length > 0, [`${k.midias.galerias.length} galeria(s)`, k.midias.videos.length ? `${k.midias.videos.length} vídeo(s)` : "", k.midias.arquivos.length ? `${k.midias.arquivos.length} PDF(s)` : ""].filter(Boolean).join(", ")],
     fluxos: [true, k.fluxos.length ? `${k.fluxos.length} conversa(s) criada(s)` : "criadas no treino (etapa 2)"],
   };
   return RECURSOS.map((id) => {
@@ -757,7 +768,7 @@ async function cmdInstalador(flags, pasta) {
       const mudancas = { agente };
       // Setor trocado na janela com a base mantida: só o setor.json muda (como no comando setor).
       if (ctx.flags.setor) {
-        if (g.kept.length && !escolhas.regerar) mudancas.setor = sectorKnowledge(detectSector(textsFromReport(report), { forcar: ctx.flags.setor }));
+        if (g.kept.length && !escolhas.regerar) mudancas.setor = sectorKnowledge(detectSector(textsFromReport(report), { forcar: ctx.flags.setor }), { siteText: siteTextOf(report) });
         await saveConfig(ctx, { setor: ctx.flags.setor });
       }
       if (typeof escolhas.recursos?.perfil === "boolean") {

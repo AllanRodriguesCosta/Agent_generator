@@ -106,7 +106,10 @@ export function buildContents(report = {}, { limite = 300 } = {}) {
     seen.add(key);
     let id = slug(t) || `conteudo-${out.length + 1}`;
     for (let n = 2; out.some((c) => c.id === id); n++) id = `${slug(t)}-${n}`;
-    out.push({ id, titulo: t, resumo, topicos: keywords(`${t} ${t} ${body}`, 8).join(" "), link, fonte });
+    // Versão 0.10: resumo maior para "explica melhor" (só quando acrescenta de verdade).
+    const longo = summarize(body, { frases: 5, max: 900, titulo: t });
+    const detalhe = longo.length >= resumo.length + 60 ? longo : "";
+    out.push({ id, titulo: t, resumo, ...(detalhe ? { detalhe } : {}), topicos: keywords(`${t} ${t} ${body}`, 8).join(" "), link, fonte });
   };
   for (const p of report.paginas || [])
     for (const b of p.blocos || []) add({ titulo: b.titulo || p.titulo, texto: b.texto, link: b.ancora ? `${p.href}#${b.ancora}` : p.href, fonte: p.arquivo || p.href });

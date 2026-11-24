@@ -16,6 +16,78 @@ const MISSES = "agente_faltas_v1";
 const MISS_DAYS = 90;
 // Versão 0.8: dados da pessoa logada, só nesta aba (sessionStorage) e por pouco tempo.
 const USER = "agente_usuario_v1";
+// Versão 0.10: formulário a preencher (captura de contato) e mensagem proativa já mostrada.
+const PENDING_FORM = "agente_formulario_v1";
+const NUDGE = "agente_proativa_v1";
+
+// ---- Versão 0.10: preencher o formulário do próprio site ----
+// O agente pergunta nome e e-mail/telefone na conversa; o widget coloca nos campos do formulário
+// da página (sem enviar). Os dados ficam só nesta aba, por 10 minutos, e somem depois de usados.
+const FIELD_RULES = {
+  email: (d) => d.tipo === "email" || /e-?mail/.test(d.texto),
+  telefone: (d) => d.tipo === "tel" || /(telefone|celular|whats|fone|phone|\btel\b)/.test(d.texto),
+  nome: (d) => /\b(nome|name|seu nome|full ?name)\b/.test(d.texto) && !/(e-?mail|empresa|usuario|user ?name|login)/.test(d.texto),
+  mensagem: (d) => d.tag === "textarea" || /(mensagem|message|duvida|descri|detalhe|observ|comentario|assunto)/.test(d.texto),
+};
+/** descs: [{ tag, tipo, texto }] dos campos de um formulário → { índice: chave } (um campo por dado). */
+export function matchFields(descs, valores) {
+  const out = {};
+  for (const key of ["email", "telefone", "nome", "mensagem"]) {
+    if (!valores?.[key]) continue;
+    const i = descs.findIndex((d, j) => !(j in out) && FIELD_RULES[key](d) && (key !== "mensagem" || d.tag === "textarea" || !descs.some((x, k) => !(k in out) && x.tag === "textarea")));
+    if (i >= 0) out[i] = key;
+  }
+  return out;
+}
+const fold = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+function describeField(node) {
+  const id = node.id;
+  const label = id ? globalThis.document.querySelector(`label[for="${globalThis.CSS?.escape ? globalThis.CSS.escape(id) : id}"]`)?.textContent : "";
+  const prev = node.previousElementSibling?.tagName === "LABEL" ? node.previousElementSibling.textContent : "";
+  return { tag: node.tagName.toLowerCase(), tipo: (node.getAttribute("type") || "").toLowerCase(), texto: fold([node.name, id, node.placeholder, node.getAttribute("aria-label"), node.getAttribute("autocomplete"), label, prev, node.closest("label")?.textContent].join(" ")) };
+}
+const FILLABLE = "input:not([type=hidden]):not([type=password]):not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]):not([type=file]), textarea";
+/** Preenche o formulário da página que mais combina com os dados. Devolve quantos campos preencheu. */
+export function fillForm(valores, doc = globalThis.document) {
+  let best = null;
+  for (const form of doc.querySelectorAll("form")) {
+    if (form.closest(".agw-root")) continue;
+    const nodes = [...form.querySelectorAll(FILLABLE)];
+    const map = matchFields(nodes.map(describeField), valores);
+    if (!best || Object.keys(map).length > Object.keys(best.map).length) best = { form, nodes, map };
+  }
+  if (!best || !Object.keys(best.map).length) return 0;
+  for (const [i, key] of Object.entries(best.map)) {
+    const node = best.nodes[i];
+    // Setter nativo + eventos: funciona também em formulários de React/Vue.
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), "value")?.set;
+    if (setter) setter.call(node, valores[key]);
+    else node.value = valores[key];
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+    node.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  best.form.scrollIntoView?.({ block: "center" });
+  return Object.keys(best.map).length;
+}
+const pathKey = (p) => `/${String(p || "").split(/[?#]/)[0].replace(/^\/+/, "")}`.replace(/\/index\.html?$/i, "/").replace(/\.html?$/i, "").replace(/\/+$/, "") || "/";
+export const samePage = (a, b) => pathKey(a) === pathKey(b);
+function savePendingForm(f) {
+  try {
+    globalThis.sessionStorage.setItem(PENDING_FORM, JSON.stringify({ pagina: f.pagina, valores: f.valores, ate: Date.now() + 10 * 60000 }));
+  } catch {
+    /* sem armazenamento: preenche só se já estiver na página */
+  }
+}
+function takePendingForm() {
+  try {
+    const f = JSON.parse(globalThis.sessionStorage.getItem(PENDING_FORM) || "null");
+    if (!f || f.ate < Date.now() || !samePage(f.pagina, globalThis.location.pathname)) return null;
+    globalThis.sessionStorage.removeItem(PENDING_FORM);
+    return f;
+  } catch {
+    return null;
+  }
+}
 
 // Dados do usuário: o site entrega (identificar(), window.AGENTE_USUARIO ou
 // <script type="application/json" id="agente-usuario">) ou o widget lê perfil.fonte com a sessão
@@ -242,6 +314,22 @@ export async function mount(options = {}) {
       }
       item.append(box);
     }
+    // Versão 0.10: vídeos e PDFs como cartões (abrem na plataforma/arquivo, sem incorporar).
+    if (msg.cartoes?.length) {
+      const list = el("ul", { class: "agw-cards" });
+      for (const c of msg.cartoes.slice(0, 4)) {
+        const external = c.tipo === "pdf" || (/^https?:\/\//i.test(c.href) && !c.href.startsWith(location.origin));
+        const a = el("a", { class: "agw-card", href: safeHref(c.href), ...(external ? { target: "_blank", rel: "noopener noreferrer" } : {}) });
+        a.append(el("span", { class: `agw-card-icon agw-card-${c.tipo === "video" ? "video" : "pdf"}`, "aria-hidden": "true" }, c.tipo === "video" ? "▶" : "PDF"));
+        const info = el("span", { class: "agw-item-info" });
+        info.append(el("span", { class: "agw-item-name" }, c.titulo), el("span", { class: "agw-item-price" }, c.tipo === "pdf" ? "Abrir o PDF" : c.plataforma === "youtube" ? "Assistir no YouTube" : c.plataforma === "vimeo" ? "Assistir no Vimeo" : "Assistir o vídeo"));
+        a.append(info);
+        const li = el("li");
+        li.append(a);
+        list.append(li);
+      }
+      item.append(list);
+    }
     if (msg.acoes?.length) {
       const actions = el("div", { class: "agw-actions" });
       for (const a of msg.acoes) {
@@ -296,7 +384,7 @@ export async function mount(options = {}) {
     if (r.perfil?.id && (endpoint || !usuario)) {
       const dados = await ensureUser();
       if (dados) {
-        const filled = agent.perfil(r.perfil.id, dados);
+        const filled = agent.perfil(r.perfil.id, dados, r.perfil);
         if (filled) r = { ...r, ...filled, contexto: { ...(r.contexto || {}), ...(filled.contexto || {}) } };
       }
     }
@@ -324,7 +412,13 @@ export async function mount(options = {}) {
       if (texto && agente.registro && !endpoint)
         fetch(agente.registro, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mensagem: texto, falta: true }) }).catch(() => {});
     }
-    const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [], imagens: (r.imagens || []).slice(0, 4), intencao: r.intencao || "", ...(typeof r.interpretado === "string" ? { interpretado: r.interpretado.slice(0, 160) } : {}) };
+    // Versão 0.10: formulário preenchido pela conversa. Na própria página, preenche já; em outra,
+    // guarda (só nesta aba, 10 min) e preenche quando a pessoa abrir a página pelo botão.
+    if (r.formulario?.pagina && r.formulario.valores) {
+      if (samePage(r.formulario.pagina, location.pathname) && fillForm(r.formulario.valores)) r = { ...r, texto: `${r.texto} Já preenchi o formulário desta página: confira e clique em enviar.`, acoes: [] };
+      else savePendingForm(r.formulario);
+    }
+    const bot = { de: "bot", texto: r.texto, acoes: r.acoes || [], itens: r.itens || [], imagens: (r.imagens || []).slice(0, 4), ...(r.cartoes?.length ? { cartoes: r.cartoes.slice(0, 4) } : {}), intencao: r.intencao || "", ...(typeof r.interpretado === "string" ? { interpretado: r.interpretado.slice(0, 160) } : {}) };
     state.mensagens.push(bot);
     state.contexto = r.contexto || {};
     bubble(bot);
@@ -365,6 +459,48 @@ export async function mount(options = {}) {
     ask(input.value);
   });
   if (options.aberto) setOpen(true);
+  // Versão 0.10: chegou à página do formulário que a conversa preparou: preenche e avisa.
+  const pending = takePendingForm();
+  if (pending) {
+    const n = fillForm(pending.valores);
+    const note = { de: "bot", texto: n ? "Preenchi o formulário com os dados que você me passou. Confira e clique em enviar quando estiver tudo certo." : "Não achei o formulário nesta página. Os dados que você me passou não foram guardados." };
+    state.mensagens.push(note);
+    save(state);
+    if (!panel.hidden) bubble(note);
+  }
+  // Versão 0.10 (M2): mensagem proativa da página (uma por sessão, depois de alguns segundos,
+  // só se a conversa ainda não começou). AGENTE_CONFIG.proativa = false desliga.
+  const nudge = options.proativa !== false && agent.proativa?.(location.pathname);
+  let nudgeTimer = null;
+  const nudgeSeen = () => {
+    try {
+      return Boolean(sessionStorage.getItem(NUDGE));
+    } catch {
+      return true;
+    }
+  };
+  if (nudge && !nudgeSeen() && state.mensagens.length <= 1)
+    nudgeTimer = setTimeout(() => {
+      if (!panel.hidden || nudgeSeen()) return;
+      try {
+        sessionStorage.setItem(NUDGE, "1");
+      } catch {
+        /* sem armazenamento: mostra só esta vez */
+      }
+      const box = el("div", { class: "agw-nudge", role: "status" });
+      const go = el("button", { type: "button", class: "agw-chip" }, nudge.sugestoes[0] || "Conversar");
+      const dismiss = el("button", { type: "button", class: "agw-nudge-close", "aria-label": "Dispensar a mensagem" }, "×");
+      box.append(dismiss, el("p", {}, nudge.texto), go);
+      go.addEventListener("click", () => {
+        box.remove();
+        setOpen(true);
+        if (nudge.sugestoes[0]) ask(nudge.sugestoes[0]);
+      });
+      dismiss.addEventListener("click", () => box.remove());
+      launcher.addEventListener("click", () => box.remove(), { once: true });
+      root.append(box);
+    }, nudge.aposSeg * 1000);
+  launcher.addEventListener("click", () => clearTimeout(nudgeTimer), { once: true });
   // No console: agente.faltas() lista; agente.exportarFaltas() baixa o JSON para "agent-generator aprender".
   const exportMisses = () => {
     const blob = new globalThis.Blob([JSON.stringify(readMisses(), null, 2)], { type: "application/json" });
