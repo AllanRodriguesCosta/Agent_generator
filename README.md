@@ -1,8 +1,9 @@
 # Agent Generator
 
-Faz um **raio X do seu projeto web** e cria um **agente (chatbot) personalizado** para ele: entende o
-que o visitante escreve, responde as perguntas frequentes do site, leva às páginas certas e encontra
-produtos ou serviços (inclusive por preço: "até R$ 100").
+Faz um **raio X do seu projeto web** (ou do seu **site já publicado**, só pelo endereço) e cria um
+**agente (chatbot) personalizado** para ele: entende o que o visitante escreve, responde as perguntas
+frequentes do site, leva às páginas certas e encontra produtos ou serviços (inclusive por preço:
+"até R$ 100").
 
 - **Sem custo e sem IA obrigatória.** O agente roda no navegador do visitante, com processamento
   de linguagem natural local (Naive Bayes e busca por relevância). A IA é opcional e gratuita: serve
@@ -63,6 +64,14 @@ produtos ou serviços (inclusive por preço: "até R$ 100").
   mostra **vídeos e PDFs** como cartões; "explica melhor" traz o resumo maior; convida uma vez
   por sessão ("Quer ver as fotos mais recentes desta obra?"); e trata quem tem várias unidades
   ou pedidos. A busca passou a usar BM25. Ver [docs/CONVERSA-GUIADA.md](docs/CONVERSA-GUIADA.md).
+- **Sem código (0.11):** o instalador tem o caminho **"Meu site já está no ar"** — WordPress, Wix,
+  Shopify ou qualquer plataforma, só com o endereço: ele lê as páginas públicas, publica o agente
+  num **serviço seu, gratuito, na Cloudflare** e você cola **uma linha** no site (ou envia o
+  **plugin WordPress** pronto), com prévia e verificação. Sem baixar o código e sem novo deploy. A
+  **chave da IA é conectada no próprio instalador**: no OpenRouter em 1 clique (abre o login no
+  navegador, como o Git, e a chave volta sozinha); no Gemini, copiar e colar com teste na hora. A
+  chave fica no cofre do seu usuário e, publicada, como segredo no serviço — nada de variável no
+  Render ou Action no GitHub. Ver [docs/SEM-CODIGO.md](docs/SEM-CODIGO.md).
 - **Feito para IAs de código também:** `--json` em todos os comandos e um guia passo a passo
   ([GUIA-PARA-IA.md](GUIA-PARA-IA.md)) para Copilot, Codex, Claude Code, Cursor etc. automatizarem tudo.
 
@@ -75,9 +84,12 @@ servir a qualquer projeto.
 ## Jeito mais fácil: executável (sem instalar nada)
 
 1. Baixe o **`agente-instalador`** do seu sistema na página **Releases** (Windows `.exe`, Linux ou macOS).
-2. Coloque o arquivo na **pasta raiz do seu site** (onde fica o `index.html` ou o `package.json`).
-3. Dê dois cliques. Abre uma janela com as etapas e as instruções de cada uma: confira a pasta,
-   veja o raio X, marque as funcionalidades, escolha nome e cor e clique em **Instalar**. Depois,
+2. **Site já no ar?** Dê dois cliques em qualquer pasta, escolha **Meu site já está no ar**, digite o
+   endereço e siga as etapas até **Colocar no site** (uma linha ou o plugin WordPress).
+   Ver [docs/SEM-CODIGO.md](docs/SEM-CODIGO.md).
+3. **Tem a pasta do site?** Coloque o arquivo na **pasta raiz do seu site** (onde fica o
+   `index.html` ou o `package.json`) e dê dois cliques: confira a pasta, veja o raio X, marque as
+   funcionalidades, escolha nome e cor, conecte a IA se quiser e clique em **Instalar**. Depois,
    converse com o agente e siga para a etapa 2 (treino) sem fechar a janela.
 
 <p align="center"><img src="docs/img/instalador-funcionalidades.png" alt="Instalador visual na etapa Funcionalidades, com as etapas à esquerda e os checkboxes" width="640"></p>
@@ -137,7 +149,9 @@ Detalhes do formato: [docs/FORMATO-DA-BASE.md](docs/FORMATO-DA-BASE.md). Arquite
 
 | Comando | O que faz |
 | --- | --- |
-| `instalador [pasta]` | (0.9) Instalador visual numa janela: etapas com instruções, funcionalidades com checkbox, aparência, instalação, teste e etapa 2 (é o que o `agente-instalador` abre) |
+| `instalador [pasta]` | (0.9) Instalador visual numa janela: etapas com instruções, funcionalidades com checkbox, aparência, instalação, teste e etapa 2 (é o que o `agente-instalador` abre). (0.11) Caminho "Meu site já está no ar" e etapa Inteligência artificial |
+| `ia` | (0.11) Conecta a IA uma vez e guarda a chave no cofre do usuário: `--provedor openrouter` (login no navegador, a chave volta sozinha), `gemini` ou `openai`; `--esquecer` |
+| `publicar [pasta]` | (0.11) Publica o serviço do agente na sua conta gratuita da Cloudflare (`--token` na 1ª vez): a chave da IA vira segredo; pasta do `site <url>` publica o agente inteiro e mostra a linha para colar; `--remover` |
 | `desinstalar [pasta]` | (0.9) Desfaz a instalação: widget fora das páginas, pasta do agente apagada, base guardada. `--sim` confirma, `--tudo` apaga também `agente-gerador/` |
 | `assistente [pasta]` | Guiado com perguntas sim/não, do raio X ao teste no navegador (é o que o executável roda). `--sim` aceita os padrões |
 | `criar <pasta>` | Tudo de uma vez: analisar, gerar, instalar e avaliar |

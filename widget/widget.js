@@ -8,6 +8,7 @@ import { mapItems } from "./nucleo/catalog-map.js";
 import { describeLookup, lookupHeaders } from "./nucleo/lookup.js";
 import { anonymize, isMiss } from "./nucleo/privacy.js";
 import { sanitizeUser } from "./nucleo/context.js";
+import { withRemoteIa } from "./nucleo/ia.js";
 
 const FILES = ["agente", "intencoes", "faq", "paginas", "catalogo", "fluxos", "consultas", "acoes", "setor", "conteudos", "interacoes", "midias", "perfil"];
 const STORE = "agente_widget_v1";
@@ -238,6 +239,10 @@ export async function mount(options = {}) {
   // Versão 0.6: endpoint relativo ("../api/agente") é resolvido a partir do próprio widget, para o
   // modo serviço (agente hospedado à parte, ao lado de um site já publicado).
   const endpoint = agente.endpoint && agente.endpoint.startsWith(".") ? new URL(agente.endpoint, base).href : agente.endpoint;
+  // Versão 0.11: serviço do agente com a chave da IA (ex.: Cloudflare). O agente continua aqui no
+  // navegador; só a frase que ele não entendeu vai ao serviço, que devolve a pergunta reescrita.
+  const iaEndpoint = !endpoint && agente.ia?.endpoint ? (agente.ia.endpoint.startsWith(".") ? new URL(agente.ia.endpoint, base).href : agente.ia.endpoint) : "";
+  let remoto = iaEndpoint ? withRemoteIa(agent, iaEndpoint) : null;
   const state = load();
   const perfilCfg = agent.recursos?.perfil === false ? { ...agent.knowledge.perfil, ativo: false } : agent.knowledge.perfil;
   let usuario = sanitizeUser(userFromPage()) || readCachedUser();
@@ -357,7 +362,7 @@ export async function mount(options = {}) {
   async function answer(text) {
     // Modo navegador: os dados do usuário ficam aqui mesmo. Modo servidor: o servidor nunca recebe
     // os dados; o widget completa as respostas de perfil localmente (abaixo).
-    if (!endpoint) return agent.reply(text, state.contexto, { usuario });
+    if (!endpoint) return remoto ? remoto.replyAsync(text, state.contexto, { usuario }) : agent.reply(text, state.contexto, { usuario });
     const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mensagem: text, contexto: state.contexto }) });
     if (!res.ok) throw new Error(String(res.status));
     return res.json();
@@ -432,6 +437,7 @@ export async function mount(options = {}) {
   // Base alterada (modo treino): recarrega e recria o agente sem recarregar a página.
   document.addEventListener("agente:recarregar", async () => {
     agent = createAgent(await loadKnowledge(base));
+    remoto = iaEndpoint ? withRemoteIa(agent, iaEndpoint) : null;
   });
   function setOpen(open) {
     panel.hidden = !open;
