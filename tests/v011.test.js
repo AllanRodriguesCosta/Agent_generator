@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile, cp } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile, cp } from "node:fs/promises";
 import { inflateRawSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -18,7 +18,7 @@ import { checkKnowledge } from "../src/agent/knowledge.js";
 import { createAgent } from "../src/agent/agent.js";
 import { pkcePair, openRouterAuthUrl, testKey, maskKey, iaEnv } from "../src/ia/provedores.js";
 import { connectOpenRouter } from "../src/ia/openrouter.js";
-import { readVault, writeVault, forget, vaultView, cofreFile } from "../src/ia/cofre.js";
+import { readVault, writeVault, updateVault, forget, vaultView, cofreFile } from "../src/ia/cofre.js";
 import { tokenTemplateUrl, serviceName, connectCloudflare, publishService, removeService, readServiceMisses, workerModules, assetManifest, ASSET_HEADERS } from "../src/publicar/cloudflare.js";
 import { embedTags, loaderScript, detectPlatform, platformGuides, zipFiles, crc32, wordpressPlugin, verifyInstall, startPreview } from "../src/publicar/site.js";
 import { generateKnowledge } from "../src/generator/index.js";
@@ -27,13 +27,14 @@ import { main } from "../bin/agent-generator.js";
 
 const tmp = async (t, prefixo = "ag-v011-") => {
   const dir = await mkdtemp(join(tmpdir(), prefixo));
-  t.after(() => rm(dir, { recursive: true, force: true }));
+  // No Windows, apagar logo depois de fechar um servidor pode dar EBUSY por um instante.
+  t.after(() => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   return dir;
 };
 // Cofre só deste arquivo de teste (nunca o do usuário).
 const COFRE_DIR = await mkdtemp(join(tmpdir(), "ag-cofre-"));
 process.env.AGENTE_COFRE = join(COFRE_DIR, "cofre.json");
-test.after(() => rm(COFRE_DIR, { recursive: true, force: true }));
+test.after(() => rm(COFRE_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 const urlOf = (input) => (typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
@@ -279,8 +280,9 @@ test("testar chave: Gemini, OpenRouter (conta sem crédito usa modelo gratuito) 
 test("cofre: fora do projeto, só o dono lê, nunca mostra a chave inteira", async (t) => {
   const dir = await tmp(t);
   const file = join(dir, "sub", "cofre.json");
-  assert.match(cofreFile({ APPDATA: "C:\\Users\\a\\AppData\\Roaming" }, "win32"), /AppData.Roaming.agent-generator.cofre\.json$/);
-  assert.match(cofreFile({ XDG_CONFIG_HOME: "/home/a/.config" }, "linux"), /\.config\/agent-generator\/cofre\.json$/);
+  // Caminho exato de cada sistema, rodando em qualquer um (o CI testa Windows e Linux).
+  assert.equal(cofreFile({ APPDATA: "C:\\Users\\a\\AppData\\Roaming" }, "win32"), "C:\\Users\\a\\AppData\\Roaming\\agent-generator\\cofre.json");
+  assert.equal(cofreFile({ XDG_CONFIG_HOME: "/home/a/.config" }, "linux"), "/home/a/.config/agent-generator/cofre.json");
   assert.deepEqual(await readVault(file), {});
   await writeVault({ ia: { provedor: "gemini", chave: "AIzaSegredoMuitoSecreto123456", modelo: "m" }, cloudflare: { token: "cf-token-secreto-1234567890", conta: "Loja", contaId: "c" } }, file);
   if (process.platform !== "win32") assert.equal((await stat(file)).mode & 0o777, 0o600);
@@ -291,6 +293,11 @@ test("cofre: fora do projeto, só o dono lê, nunca mostra a chave inteira", asy
   const depois = await readVault(file);
   assert.equal(depois.ia, undefined);
   assert.ok(depois.cloudflare.token);
+  // Duas gravações ao mesmo tempo (ex.: chave do OpenRouter chegando enquanto a Cloudflare é salva).
+  await Promise.all([updateVault((c) => void (c.a = 1), file), updateVault((c) => void (c.b = 2), file), writeVault({ ...depois, a: 1, b: 2 }, file)]);
+  const juntos = await readVault(file);
+  assert.deepEqual([juntos.a, juntos.b, Boolean(juntos.cloudflare?.token)], [1, 2, true], "nenhuma gravação se perde");
+  assert.deepEqual((await readdir(dirname(file))).filter((f) => f.endsWith(".tmp")), [], "sem arquivo temporário sobrando");
   await forget("tudo", file);
   assert.deepEqual(await readVault(file), {});
 });

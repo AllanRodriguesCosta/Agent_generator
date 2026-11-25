@@ -13,6 +13,8 @@ permissions:
 jobs:
   test:
     strategy:
+      # Uma combinação falhando não cancela as outras (dá para ver se o problema é do sistema ou do Node).
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         node: ["20", "24"]
@@ -26,7 +28,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Testes
-        run: npm test
+        # spec no log + cada teste que falhar vira anotação do GitHub (scripts/anotar-falhas.mjs).
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./scripts/anotar-falhas.mjs --test-reporter-destination=stdout
       - name: Demo (criar o agente no exemplo e conversar)
         run: |
           npm run demo

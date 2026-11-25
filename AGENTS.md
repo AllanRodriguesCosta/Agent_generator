@@ -2,7 +2,7 @@
 
 - **Para criar o agente de um projeto (usar a ferramenta):** siga [GUIA-PARA-IA.md](GUIA-PARA-IA.md).
 - **Para mudar a ferramenta (este código):**
-  - Node >= 20, ES modules, **sem dependências** (nem de desenvolvimento). Testes: `npm test` (`node --test`).
+  - Node >= 20, ES modules, **sem dependências** (nem de desenvolvimento). Testes: `npm test` (`node --test`). No CI (Ubuntu e Windows, Node 20 e 24) cada teste que falha vira anotação do GitHub (`scripts/anotar-falhas.mjs`); caminhos de outro sistema: use `path.win32`/`path.posix`, não o `join` da máquina.
   - `src/agent/` é o núcleo que roda **no navegador e no Node**: não use `node:*` nem APIs de DOM ali.
   - `widget/` usa só DOM e `textContent` (nada de `innerHTML` com dados) e precisa funcionar com CSP sem `unsafe-inline`.
   - `src/scanner/` só lê arquivos: nunca grava no projeto analisado e nunca lê `.env` ou chaves.
