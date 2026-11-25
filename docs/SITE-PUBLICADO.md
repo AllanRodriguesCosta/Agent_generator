@@ -1,5 +1,11 @@
 # Site já publicado: agente sem o código (versão 0.6)
 
+> **0.11: sem terminal e sem Render.** O instalador visual faz tudo isto pela janela (caminho
+> **Meu site já está no ar**) e publica o agente num serviço seu, gratuito, na Cloudflare — o site
+> só ganha uma linha (ou o plugin WordPress). No terminal: `site <url>` e depois `publicar <pasta>`.
+> Ver [SEM-CODIGO.md](SEM-CODIGO.md). Esta página continua valendo para o serviço Node
+> (`agente-servico/`) em Render, Docker ou servidor próprio.
+
 Para quando o site já está no ar (hospedado em qualquer lugar) e você não tem, ou não quer
 mexer, no código. O site **não sai do ar** em nenhum momento.
 

@@ -1,5 +1,10 @@
 # Instalador visual (0.9): instalar e desinstalar com cliques, sem terminal
 
+> **Novo na 0.11:** caminho **"Meu site já está no ar"** (só o endereço: sem baixar o código e sem
+> novo deploy) e etapa **Inteligência artificial** (OpenRouter em 1 clique, Gemini com copiar e
+> colar, chave guardada como segredo num serviço seu na Cloudflare). Ver
+> [SEM-CODIGO.md](SEM-CODIGO.md).
+
 O `agente-instalador` é o jeito mais fácil de colocar o agente no seu site. Ele abre uma janela
 parecida com a de um instalador de programas do Windows: uma lista de etapas à esquerda, as
 **instruções do que fazer** em cada etapa no topo e os botões **Voltar** e **Próximo** embaixo.
@@ -24,16 +29,21 @@ Com Node: `agent-generator instalador ./meu-site` (ou `npx` a partir do reposit�
 
 ## As etapas
 
+Na **Boas-vindas** você escolhe o caminho: **Tenho a pasta do site** (tabela abaixo) ou **Meu site já
+está no ar** (endereço, leitura do site, funcionalidades, aparência, inteligência artificial,
+publicar, colocar no site e teste — ver [SEM-CODIGO.md](SEM-CODIGO.md)).
+
 | # | Etapa | O que acontece | O que você faz |
 | --- | --- | --- | --- |
-| 1 | Boas-vindas | Resumo do que o instalador vai fazer | Lê e clica em Próximo |
+| 1 | Boas-vindas | Escolha do caminho e resumo do que o instalador vai fazer | Escolhe e clica em Próximo |
 | 2 | Pasta do projeto | Confere se é a pasta raiz (✓ `index.html`, ✓ `package.json`, agente já instalado) | Confirma ou cola outro caminho |
 | 3 | Raio X | Lê o projeto (só leitura): páginas, rotas, formulários, perguntas frequentes, catálogo e setor | Confere os números; se o setor estiver errado, escolhe outro e refaz |
 | 4 | Funcionalidades | Mostra as funcionalidades **que merecem uma decisão**, com o que foi encontrado | Marca ou desmarca os checkboxes |
 | 5 | Aparência | Nome, cor do botão, tom, lado da tela e primeira mensagem, com prévia | Ajusta e confere a prévia |
-| 6 | Instalação | Copia o agente, liga o widget nas páginas (com backup), testa a base | Revisa o resumo e clica em **Instalar** |
-| 7 | Teste | Conversa de teste dentro da janela, acerto da base por área e botão para abrir o site | Conversa como um cliente e anota o que errar |
-| 8 | Etapa 2 | **Interação assistida**: treino, observação e editor da base | Treina até ficar bom; a janela continua aberta |
+| 6 | Inteligência artificial | (0.11, opcional) Conecta a IA: OpenRouter em 1 clique, Gemini (copiar e colar) ou compatível com OpenAI; publica o serviço da IA na sua conta da Cloudflare | Escolhe Sem IA ou conecta; informa o endereço do site no ar |
+| 7 | Instalação | Copia o agente, liga o widget nas páginas (com backup), testa a base e, com IA, publica o serviço | Revisa o resumo e clica em **Instalar** |
+| 8 | Teste | Conversa de teste dentro da janela (com a IA, se ligada), acerto da base por área e botão para abrir o site | Conversa como um cliente e anota o que errar |
+| 9 | Etapa 2 | **Interação assistida**: treino, observação e editor da base | Treina até ficar bom; a janela continua aberta |
 
 ## Funcionalidades (checkbox)
 

@@ -102,6 +102,13 @@ export function checkKnowledge(input = {}) {
       const link = safeLink(a.registro);
       return link && !/^https?:/i.test(link) ? link : "";
     })(),
+    // Versão 0.11: serviço do agente (ex.: Cloudflare) que guarda a chave da IA. O widget roda o
+    // agente aqui e só manda para lá a frase que não entendeu. https://, relativo ao widget
+    // ("../api/ia") ou http://localhost (testes). Faltando = sem IA no navegador.
+    ia: (() => {
+      const e = safeLink(a.ia?.endpoint);
+      return e && (/^https:\/\//i.test(e) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(e) || e.startsWith(".")) ? { endpoint: e } : null;
+    })(),
   };
 
   const intencoes = {};

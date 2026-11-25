@@ -101,13 +101,13 @@ a { color: var(--marca); }
 /* Formulários */
 label.campo { display: grid; gap: 6px; font-weight: 600; font-size: 13.5px; }
 label.campo span.ajuda { font-weight: 400; color: var(--suave); }
-input[type="text"], input[type="url"], input[type="number"], select, textarea {
+input[type="text"], input[type="url"], input[type="number"], input[type="password"], select, textarea {
   width: 100%; border: 1px solid #cfc9df; border-radius: 10px; padding: 9px 12px; background: #fff;
 }
 textarea { min-height: 72px; resize: vertical; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 3px solid rgba(109, 40, 217, 0.35); outline-offset: 1px; }
 .linha { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.linha > input[type="text"] { flex: 1 1 320px; }
+.linha > input[type="text"], .linha > input[type="password"], .linha > input[type="url"] { flex: 1 1 320px; }
 
 .btn {
   border: 1px solid transparent; border-radius: 10px; padding: 9px 18px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
@@ -219,3 +219,13 @@ details summary { cursor: pointer; font-weight: 600; }
 .destaque.ja .conteudo { gap: 10px; }
 .destaque.ja span { display: block; }
 .cartao > .linha { margin-top: 12px; }
+
+/* Versão 0.11: inteligência artificial e Cloudflare */
+.selo.info { background: #eef4ff; color: #1d3f8a; }
+.ia-modos { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.passos-ia { margin: 4px 0 8px; padding-left: 22px; display: grid; gap: 12px; }
+.passos-ia li { padding-left: 4px; }
+.passos-ia li > span { display: block; margin-bottom: 6px; }
+.passos-ia .linha { margin-top: 2px; }
+.aviso .btn { margin-left: 6px; padding: 4px 12px; font-size: 13px; }
+details.cartao > summary + * { margin-top: 10px; }

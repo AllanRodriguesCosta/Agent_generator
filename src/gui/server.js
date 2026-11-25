@@ -37,7 +37,11 @@ const publicSite = (s) => s && { url: s.url, origem: s.origem };
 /**
  * ops (do CLI): abrir(pasta) -> { ctx, info }; analisar(ctx, log, { setor }); instalar(ctx, escolhas, log);
  * testar(ctx, mensagem, contexto); abrirSite(ctx) -> { url, stop }; sessao(ctx, modo, opcoes, io) -> resultado;
- * editor(ctx) -> { url, stop }; acerto(ctx) -> número; planoDesinstalar(ctx); desinstalar(ctx, { apagarTrabalho }, log).
+ * editor(ctx) -> { url, stop }; acerto(ctx) -> número; planoDesinstalar(ctx); desinstalar(ctx, { apagarTrabalho, apagarServico }, log).
+ * Versão 0.11 (IA e Cloudflare): iaEstado(ctx); iaChave({ provedor, chave, baseUrl, modelo }); iaOpenRouter() -> { url, pronto, cancelar };
+ * iaEsquecer(qual); cloudflare(token); abrirLink(qual); publicar(ctx, log).
+ * Versão 0.12 (site já publicado): iniciarUrl(url, pastaBase) -> { ctx, info }; colocar(ctx); verificar(ctx);
+ * previa(ctx) -> { url, stop }; wordpressZip(ctx) -> Buffer; removerServico(ctx).
  * Opções: pasta (inicial), port, listen(server, port), vivoMs (sem sinal da janela por esse tempo
  * e sem treino aberto -> encerra), onFim(motivo), versao.
  */
@@ -45,7 +49,9 @@ export async function startInstaller({ ops, pasta = "", port = 4730, listen, viv
   const token = randomBytes(16).toString("hex");
   let bound = port;
   const allowedHost = () => [`127.0.0.1:${bound}`, `localhost:${bound}`];
-  const state = { ctx: null, info: null, analise: null, instalacao: null, job: null, sessao: null, editor: null, site: null, ultimoSinal: Date.now() };
+  const state = { ctx: null, info: null, analise: null, instalacao: null, job: null, sessao: null, editor: null, site: null, conexaoIa: null, previa: null, ultimoSinal: Date.now() };
+  // Versão 0.11: "Entrar com OpenRouter" (o login acontece no navegador; a janela acompanha).
+  const conexaoView = (c) => c && { status: c.status, url: c.url, erro: c.erro, mensagem: c.mensagem };
   const running = () => state.job?.status === "rodando" || state.sessao?.status === "rodando";
 
   // Tarefa longa (analisar, instalar): a janela acompanha pelo /api/tarefa.
@@ -118,6 +124,8 @@ export async function startInstaller({ ops, pasta = "", port = 4730, listen, viv
       sessao: sessaoView(state.sessao),
       editor: state.editor ? { url: state.editor.url } : null,
       site: publicSite(state.site),
+      modo: state.ctx?.modo === "url" ? "url" : "pasta",
+      servico: state.ctx?.config?.servico?.url || "",
       acerto: state.ctx && state.instalacao ? await Promise.resolve(ops.acerto(state.ctx)).catch(() => null) : null,
     }),
     "POST /api/vivo": async () => ({ ok: true }),
@@ -148,7 +156,7 @@ export async function startInstaller({ ops, pasta = "", port = 4730, listen, viv
       await Promise.resolve(state.editor?.stop?.()).catch(() => {});
       state.editor = null;
       const job = startJob("desinstalar", async (log) => {
-        const r = await ops.desinstalar(ctx, { apagarTrabalho: d.apagarTrabalho === true }, log);
+        const r = await ops.desinstalar(ctx, { apagarTrabalho: d.apagarTrabalho === true, apagarServico: d.apagarServico === true }, log);
         // A pasta volta a ser "sem agente": recarrega o contexto e esquece o raio X/instalação.
         const again = await ops.abrir(ctx.project || state.info?.pasta);
         Object.assign(state, { ctx: again.ctx, info: again.info, analise: null, instalacao: null });
@@ -181,6 +189,54 @@ export async function startInstaller({ ops, pasta = "", port = 4730, listen, viv
       state.editor = state.editor || (await ops.editor(needCtx()));
       return { url: state.editor.url };
     },
+    // ---------- Versão 0.11: IA e Cloudflare ----------
+    // A conexão é lida antes do cofre: "ok" aqui garante que a chave já está guardada.
+    "GET /api/ia": async () => {
+      const conexao = conexaoView(state.conexaoIa);
+      return { ...(await ops.iaEstado(state.ctx)), conexao };
+    },
+    "POST /api/ia/chave": async (d) => ops.iaChave({ provedor: String(d.provedor || ""), chave: String(d.chave || "").slice(0, 400), baseUrl: String(d.baseUrl || "").slice(0, 300), modelo: String(d.modelo || "").slice(0, 100) }),
+    "POST /api/ia/openrouter": async () => {
+      state.conexaoIa?.cancelar?.();
+      const s = await ops.iaOpenRouter();
+      const c = { status: "esperando", url: s.url, erro: null, mensagem: "", cancelar: s.cancelar };
+      state.conexaoIa = c;
+      s.pronto.then(
+        (r) => Object.assign(c, { status: "ok", mensagem: r.mensagem }),
+        (e) => Object.assign(c, { status: "erro", erro: e.message }),
+      );
+      return { conexao: conexaoView(c) };
+    },
+    "POST /api/ia/esquecer": async (d) => ({ cofre: await ops.iaEsquecer(["ia", "cloudflare"].includes(d.qual) ? d.qual : "ia") }),
+    "POST /api/ia/abrir": async (d) => ops.abrirLink(String(d.qual || "")),
+    "POST /api/cloudflare": async (d) => ops.cloudflare(String(d.token || "").slice(0, 400)),
+    "POST /api/publicar": async () => {
+      const ctx = needCtx();
+      return { tarefa: jobView(startJob("publicar", async (log) => {
+        const r = await ops.publicar(ctx, log);
+        return { url: r.url, saude: Boolean(r.saude), modo: r.modo };
+      })) };
+    },
+    // ---------- Versão 0.12: site já publicado ----------
+    "POST /api/url": async (d) => {
+      if (running()) throw busy();
+      if (d.autorizado !== true) throw Object.assign(new Error("Confirme que o site é seu ou que você tem autorização para lê-lo."), { status: 400 });
+      const { ctx, info } = await ops.iniciarUrl(String(d.url || "").trim().slice(0, 300), pasta);
+      state.site?.stop?.();
+      await Promise.resolve(state.previa?.stop?.()).catch(() => {});
+      Object.assign(state, { ctx, info, analise: null, instalacao: null, job: null, sessao: null, site: null, previa: null });
+      return { info };
+    },
+    "GET /api/colocar": async () => ops.colocar(needCtx()),
+    "POST /api/verificar": async () => ops.verificar(needCtx()),
+    "POST /api/previa": async () => {
+      state.previa = state.previa || (await ops.previa(needCtx()));
+      return { url: state.previa.url };
+    },
+    "POST /api/servico/remover": async () => {
+      if (running()) throw busy();
+      return ops.removerServico(needCtx());
+    },
     "POST /api/sair": async () => {
       setTimeout(() => fechar("botão Fechar"), 150);
       return { ok: true };
@@ -198,6 +254,13 @@ export async function startInstaller({ ops, pasta = "", port = 4730, listen, viv
       if (req.method === "GET" && ASSETS[url.pathname]) {
         const [file, type] = ASSETS[url.pathname];
         return send(res, 200, await readFile(new URL(file, CLIENT), "utf8"), type);
+      }
+      // Versão 0.12: plugin WordPress para baixar (link comum: o código da sessão vai na URL).
+      if (req.method === "GET" && url.pathname === "/api/arquivo/agente-wordpress.zip") {
+        if (url.searchParams.get("t") !== token) return send(res, 403, { erro: "Sessão inválida." });
+        const zip = await ops.wordpressZip(needCtx());
+        res.writeHead(200, { "content-type": "application/zip", "content-disposition": 'attachment; filename="agente-wordpress.zip"', "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        return res.end(zip);
       }
       if (!url.pathname.startsWith("/api/")) return send(res, 404, { erro: "Não encontrado." });
       if (req.headers["x-instalador"] !== token) return send(res, 403, { erro: "Sessão inválida. Abra o instalador de novo." });
@@ -233,6 +296,8 @@ export async function startInstaller({ ops, pasta = "", port = 4730, listen, viv
     }
     await Promise.resolve(state.editor?.stop?.()).catch(() => {});
     state.site?.stop?.();
+    state.conexaoIa?.cancelar?.();
+    await Promise.resolve(state.previa?.stop?.()).catch(() => {});
     await new Promise((ok) => {
       server.close(() => ok());
       server.closeAllConnections?.();

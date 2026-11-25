@@ -1,7 +1,7 @@
 {
   "name": "agent-generator",
-  "version": "0.10.0",
-  "description": "Faz o raio X de um projeto web e cria um agente (chatbot) personalizado para ele, sem custo e sem IA obrigatória.",
+  "version": "0.11.0",
+  "description": "Faz o raio X de um projeto web (ou de um site já publicado) e cria um agente (chatbot) personalizado para ele, sem custo e sem IA obrigatória.",
   "type": "module",
   "bin": {
     "agent-generator": "bin/agent-generator.js"

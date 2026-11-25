@@ -6,11 +6,11 @@ import { createServer } from "node:http";
 import { createReadStream, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { stat } from "node:fs/promises";
-import { join, resolve, extname, relative, sep } from "node:path";
+import { join, resolve, extname, relative, sep, basename } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { scanProject } from "../src/scanner/index.js";
 import { generateKnowledge } from "../src/generator/index.js";
-import { buildPrompt, parseAiAnswer, mergeAi, askGemini } from "../src/generator/ai.js";
+import { buildPrompt, parseAiAnswer, mergeAi, askGemini, askAi } from "../src/generator/ai.js";
 import { install, detectTarget, injectTags, readKnowledge, writeKnowledge, snippetFor, entryPages } from "../src/installer/index.js";
 import { runAssistant, staticRoot, openBrowser } from "../src/cli/assistente.js";
 import { planUninstall, runUninstall } from "../src/installer/uninstall.js";
@@ -27,6 +27,12 @@ import { buildFromSite } from "../src/site/index.js";
 import { USER_AGENT } from "../src/crawler/index.js";
 import { buildDomain, enrichFromObservation, sectorKnowledge, SECTOR_IDS } from "../src/domain/index.js";
 import { detectSector, textsFromReport } from "../src/domain/detect.js";
+import { withIa } from "../src/agent/ia.js";
+import { PROVEDORES } from "../src/ia/provedores.js";
+import { readVault } from "../src/ia/cofre.js";
+import { LINKS, saveIaKey, startOpenRouter, saveCloudflare, forgetVault, vaultState, localIa, iaResponder, publishFor, removeFor, missesFor, placementKit, readHome } from "../src/publicar/fluxo.js";
+import { verifyInstall, startPreview } from "../src/publicar/site.js";
+import { serviceName } from "../src/publicar/cloudflare.js";
 
 const ALIASES = { observe: "observar", observacao: "observar", train: "treinar", treino: "treinar", treinador: "treinar", uninstall: "desinstalar", remover: "desinstalar", auto: "assistente", wizard: "assistente", installer: "instalador", gui: "instalador", janela: "instalador", create: "criar", scan: "analisar", generate: "gerar", install: "instalar", eval: "avaliar", chat: "conversar", "ai-prompt": "prompt-ia", "ai-apply": "aplicar-ia", serve: "servir", help: "ajuda" };
 const WORK = "agente-gerador";
@@ -38,7 +44,7 @@ export function parseArgs(argv) {
     if (a.startsWith("--")) {
       const [k, v] = a.slice(2).split("=");
       if (v !== undefined) out.flags[k] = v;
-      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos", "arquivo", "max-paginas", "pausa", "setor", "fonte", "testar"].includes(k)) out.flags[k] = argv[++i];
+      else if (["destino", "porta", "frases", "modelo", "max-arquivos", "url", "minutos", "arquivo", "max-paginas", "pausa", "setor", "fonte", "testar", "provedor", "chave", "token", "api", "site"].includes(k)) out.flags[k] = argv[++i];
       else out.flags[k] = true;
     } else out._.push(a);
   }
@@ -87,6 +93,19 @@ Comandos:
                            pequeno para publicar à parte. O site só ganha duas linhas (widget).
                            IA opcional (Gemini, OpenAI ou Ollama local) só reescreve o que o
                            agente não entendeu. Pasta padrão: ./agente-<domínio>.
+  ia [pasta]               (0.11) Conecta a IA UMA vez e guarda a chave no cofre do seu usuário
+                           (fora do projeto e do git). --provedor openrouter abre o login no
+                           navegador e a chave volta sozinha; --provedor gemini testa e guarda a
+                           chave do Google AI Studio (--chave ou GEMINI_API_KEY); --provedor openai
+                           --api <url> --modelo <m> para Groq, OpenAI, Ollama... --esquecer apaga.
+                           Sem opções, mostra o que está conectado (nunca a chave inteira).
+  publicar [pasta]         (0.11/0.12) Publica o serviço do agente na SUA conta gratuita da Cloudflare
+                           (--token <token> na 1ª vez; o link do token já marca as permissões).
+                           Pasta de projeto: a chave da IA fica como segredo no serviço e o agente
+                           do site chama o serviço só quando não entende (--site <endereço do site>
+                           libera o seu domínio). Pasta do "site <url>": publica o agente inteiro e
+                           mostra a linha para colar, o guia por plataforma e o plugin WordPress.
+                           --remover apaga o serviço.
   setor [pasta]            Mostra o setor detectado (base comum: glossário e sinônimos em
                            português e inglês) e o ranking com as evidências. Com --setor <id>,
                            troca o setor da base. Setores: ${SECTOR_IDS.join(", ")}.
@@ -121,6 +140,13 @@ Opções:
   --navegador         (site) Lê as páginas num navegador (sites feitos só em JavaScript; precisa do Playwright)
   --so-conteudo       (site) Atualiza só páginas e catálogo, mantendo as edições da base
   --sim               (site) Confirma que o site é seu ou que você tem autorização para lê-lo
+  --provedor <id>     (ia) gemini, openrouter ou openai (compatível: Groq, OpenAI, Ollama...)
+  --chave <chave>     (ia) A chave (melhor: variável GEMINI_API_KEY/OPENROUTER_API_KEY, fora do histórico)
+  --api <url>         (ia) Endereço da API compatível com OpenAI (ex.: http://localhost:11434/v1)
+  --esquecer [ia|cloudflare|tudo]  (ia) Apaga do cofre
+  --token <token>     (publicar) Token da Cloudflare (fica no cofre; não precisa repetir)
+  --site <endereço>   (publicar) Endereço do site no ar (pasta de projeto), para autorizar o domínio
+  --remover           (publicar) Apaga o serviço do agente na Cloudflare
   --fonte <caminho>   (perfil) API do próprio site com os dados de quem está logado; liga o perfil
   --ativar / --desativar  (perfil) Liga (o site chama agente.identificar) ou desliga o perfil
   --testar <arq.json> (perfil) Responde os moldes com dados de exemplo, sem rede
@@ -348,10 +374,24 @@ async function cmdAplicarIa(ctx, file, text) {
 }
 
 async function cmdGemini(ctx) {
+  // Versão 0.11: sem GEMINI_API_KEY, usa a IA conectada no instalador (cofre), se houver.
+  if (!process.env.GEMINI_API_KEY) {
+    const { ia } = await localIa();
+    if (ia) return cmdMelhorarIa(ctx, ia);
+  }
   const { raw, report } = await currentKnowledge(ctx);
   const prompt = buildPrompt(report, createAgent(raw).knowledge);
   const text = await askGemini(prompt, { apiKey: process.env.GEMINI_API_KEY, model: ctx.flags.modelo || process.env.GEMINI_MODEL || undefined });
   await writeFile(join(ctx.work, "resposta-gemini.json"), text);
+  return cmdAplicarIa(ctx, null, text);
+}
+
+// Versão 0.11: melhora a base com a IA conectada (Gemini, OpenRouter ou compatível com OpenAI).
+async function cmdMelhorarIa(ctx, ia) {
+  const { raw, report } = await currentKnowledge(ctx);
+  const prompt = buildPrompt(report, createAgent(raw).knowledge);
+  const text = await askAi(prompt, ia);
+  await writeFile(join(ctx.work, "resposta-ia.json"), text);
   return cmdAplicarIa(ctx, null, text);
 }
 
@@ -523,6 +563,18 @@ function missFiles(ctx, t) {
 async function cmdAprender(ctx, io) {
   const { raw, target: t } = await currentKnowledge(ctx);
   const { faltas, arquivos } = await readMissFiles(missFiles(ctx, t));
+  // Versão 0.11: frases que o serviço do agente (Cloudflare) guardou.
+  if (ctx.config.servico?.kvId) {
+    try {
+      const doServico = await missesFor(siteKeyOf(ctx), { servico: ctx.config.servico });
+      if (doServico.length) {
+        faltas.push(...doServico);
+        arquivos.push(`${ctx.config.servico.url} (serviço do agente)`);
+      }
+    } catch (error) {
+      io.print?.(`Não consegui ler as frases do serviço do agente: ${error.message}`);
+    }
+  }
   const groups = suggestFor(groupMisses(faltas), raw);
   const text = learnText(groups, { arquivos: arquivos.map((f) => relative(ctx.project, f) || f) });
   await mkdir(ctx.work, { recursive: true });
@@ -638,6 +690,155 @@ async function cmdAssistente(ctx) {
   return result;
 }
 
+// ---------- Versão 0.11/0.12: chave de IA, serviço do agente e site já publicado ----------
+const isLocalUrl = (u) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(String(u || ""));
+// O que identifica o serviço no cofre: a origem do site (site publicado) ou a pasta do projeto.
+const siteKeyOf = (ctx) => (ctx.config.modo === "servico" ? ctx.config.site || ctx.project : ctx.project);
+const pkgVersion = async () => JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
+const comEsquema = (u) => {
+  const v = String(u || "").trim();
+  if (!v) return "";
+  try {
+    return new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).origin;
+  } catch {
+    throw new Error(`Endereço do site inválido: ${v}. Ex.: https://minhaloja.com.br`);
+  }
+};
+
+// Endereço público do site, quando o projeto diz (CNAME, homepage, canonical/og:url, sitemap).
+async function siteUrlGuess(ctx) {
+  if (ctx.config.siteUrl) return ctx.config.siteUrl;
+  const read = (f) => readFile(join(ctx.project, f), "utf8").catch(() => "");
+  const ok = (u) => (u && !isLocalUrl(u) ? new URL(u).origin : "");
+  try {
+    const cname = ((await read("CNAME")) || (await read("public/CNAME"))).trim().split(/\s+/)[0];
+    if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(cname || "")) return `https://${cname.toLowerCase()}`;
+    const pkg = JSON.parse((await read("package.json")) || "{}");
+    if (/^https?:\/\//i.test(pkg.homepage || "") && ok(pkg.homepage)) return ok(pkg.homepage);
+    for (const f of ["index.html", "public/index.html"]) {
+      const h = await read(f);
+      const m = h.match(/<link[^>]+rel=["']canonical["'][^>]*href=["'](https?:\/\/[^"']+)/i) || h.match(/<meta[^>]+property=["']og:url["'][^>]*content=["'](https?:\/\/[^"']+)/i);
+      if (m && ok(m[1])) return ok(m[1]);
+    }
+    for (const f of ["sitemap.xml", "public/sitemap.xml"]) {
+      const m = (await read(f)).match(/<loc>\s*(https?:\/\/[^<\s]+)/i);
+      if (m && ok(m[1])) return ok(m[1]);
+    }
+  } catch {
+    /* sem endereço conhecido */
+  }
+  return "";
+}
+
+// Pasta de projeto: a chave da IA vai como segredo para o serviço do agente e o widget passa a
+// chamar o serviço só quando não entende (agente.ia.endpoint). Sem variável no Render ou Action.
+async function publicarIa(ctx, log = () => {}, { site } = {}) {
+  const { raw, target: t } = await currentKnowledge(ctx);
+  const endereco = site !== undefined ? comEsquema(site) : ctx.config.siteUrl || (await siteUrlGuess(ctx));
+  const nome = ctx.config.servico?.nome || serviceName(endereco || basename(ctx.project));
+  const r = await publishFor({ siteKey: ctx.project, site: endereco, origens: endereco ? [endereco] : [], locais: true, knowledge: raw, modo: "ia", versao: await pkgVersion(), log, nome });
+  await writeKnowledge(t.dir, { agente: { ...raw.agente, ia: { endpoint: `${r.url}/api/ia` } } }, { force: true });
+  await saveConfig(ctx, { ...(endereco ? { siteUrl: endereco } : {}), servico: { url: r.url, nome: r.nome, contaId: r.contaId, kvId: r.kvId, modo: r.modo } });
+  return { ...r, site: endereco };
+}
+
+// Site já publicado (pasta do "site <url>" ou do instalador): o agente inteiro vai para o serviço.
+async function publicarCompleto(ctx, log = () => {}, { semIa = false } = {}) {
+  const { raw, target: t } = await currentKnowledge(ctx);
+  const site = ctx.config.site;
+  if (!site) throw new Error("Esta pasta não veio de um site publicado (comando site <url> ou o instalador, opção Meu site já está no ar).");
+  // O widget roda no navegador da visita; só o que ele não entender vai ao serviço (../api/ia).
+  if (raw.agente?.endpoint || raw.agente?.ia?.endpoint !== "../api/ia") await writeKnowledge(t.dir, { agente: { ...raw.agente, endpoint: "", ia: { endpoint: "../api/ia" } } }, { force: true });
+  const knowledge = await readKnowledge(t.dir);
+  const r = await publishFor({ siteKey: site, site, origens: [site], semIa, knowledge, agentDir: t.dir, modo: "completo", versao: await pkgVersion(), log, nome: ctx.config.servico?.nome });
+  await saveConfig(ctx, { servico: { url: r.url, nome: r.nome, contaId: r.contaId, kvId: r.kvId, modo: r.modo } });
+  const kit = await placementKit({ serviceUrl: r.url, site, nome: knowledge.agente?.nome || "", work: ctx.work, homeHtml: await readHome(ctx.project) });
+  return { ...r, kit };
+}
+
+async function cmdIa(flags) {
+  if (flags.esquecer) {
+    const qual = ["ia", "cloudflare", "tudo"].includes(flags.esquecer) ? flags.esquecer : "ia";
+    await forgetVault(qual);
+    console.log(qual === "tudo" ? "Cofre apagado (chave da IA e da Cloudflare)." : `Apagado do cofre: ${qual}.`);
+    return 0;
+  }
+  const provedor = typeof flags.provedor === "string" ? flags.provedor.toLowerCase() : "";
+  if (!provedor) {
+    const v = await vaultState();
+    if (flags.json) {
+      console.log(JSON.stringify(v, null, 2));
+      return 0;
+    }
+    console.log(v.ia ? `IA conectada: ${PROVEDORES[v.ia.provedor]?.nome || v.ia.provedor} · modelo ${v.ia.modelo || "-"} · chave ${v.ia.chave}` : "Nenhuma IA conectada. Ex.: agent-generator ia --provedor openrouter");
+    console.log(v.cloudflare ? `Cloudflare: conta ${v.cloudflare.conta}${v.cloudflare.subdominio ? ` (${v.cloudflare.subdominio}.workers.dev)` : ""} · token ${v.cloudflare.token}` : "Cloudflare: não conectada (agent-generator publicar <pasta> --token <token>).");
+    for (const [k, sv] of Object.entries(v.servicos)) console.log(`Serviço: ${sv.url} (${k}) · IA: ${sv.ia}`);
+    return 0;
+  }
+  if (!PROVEDORES[provedor]) throw new Error(`Provedor desconhecido: ${provedor}. Use gemini, openrouter ou openai.`);
+  const VAR = { gemini: "GEMINI_API_KEY", openrouter: "OPENROUTER_API_KEY", openai: "OPENAI_API_KEY" };
+  let chave = typeof flags.chave === "string" ? flags.chave : process.env[VAR[provedor]] || "";
+  if (provedor === "openrouter" && !chave) {
+    const sessao = await startOpenRouter({ abrir: flags["sem-navegador"] ? () => {} : openBrowser });
+    console.log(`Abrindo o OpenRouter no navegador: entre e clique em Authorize.\nSe não abriu, copie o endereço: ${sessao.url}\n(esperando até 5 minutos...)`);
+    const r = await sessao.pronto;
+    console.log(`${r.mensagem}\nGuardada no cofre do seu usuário (fora do projeto). Chave: ${r.cofre.ia.chave}`);
+    return 0;
+  }
+  if (!chave && provedor === "gemini" && process.stdin.isTTY) {
+    console.log(`Copie a sua chave do Google AI Studio: ${LINKS.gemini}`);
+    if (!flags["sem-navegador"]) openBrowser(LINKS.gemini);
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    chave = (await rl.question("Cole a chave e tecle Enter: ")).trim();
+    rl.close();
+  }
+  if (!chave && provedor !== "openai") throw new Error(`Informe a chave: --chave <chave> ou a variável ${VAR[provedor]}.${provedor === "gemini" ? ` Crie ou copie em ${LINKS.gemini}` : ""}`);
+  const r = await saveIaKey({ provedor, chave, baseUrl: flags.api, modelo: flags.modelo });
+  console.log(`${r.mensagem}\nGuardada no cofre do seu usuário (fora do projeto). Chave: ${r.cofre.ia.chave}`);
+  return 0;
+}
+
+async function cmdPublicar(ctx) {
+  const f = ctx.flags;
+  const out = (l) => !f.json && console.log(l);
+  if (typeof f.token === "string") {
+    const c = await saveCloudflare(f.token);
+    out(`Cloudflare conectada: conta ${c.conta}${c.subdominio ? ` (${c.subdominio}.workers.dev)` : ""}. Token guardado no cofre.`);
+  }
+  if (f.remover) {
+    const ok = await removeFor(siteKeyOf(ctx), { servico: ctx.config.servico });
+    if (ctx.config.modo !== "servico" && ctx.config.destino) {
+      const { raw, target: t } = await currentKnowledge(ctx);
+      if (raw.agente?.ia) await writeKnowledge(t.dir, { agente: { ...raw.agente, ia: null } }, { force: true });
+    }
+    await saveConfig(ctx, { servico: null });
+    print(ctx, { removido: ok }, ok ? "Serviço do agente apagado da Cloudflare. Se colou a linha do agente no site, apague-a também (ou desative o plugin)." : "Nenhum serviço publicado para esta pasta.");
+    return { removido: ok };
+  }
+  if (ctx.config.modo === "servico") {
+    const r = await publicarCompleto(ctx, out);
+    print(ctx, { url: r.url, saude: r.saude, tags: r.kit.tags, carregador: r.kit.loader, plataforma: r.kit.plataforma, wordpress: r.kit.wordpressZip }, [
+      "",
+      `Agente publicado em ${r.url}${r.saude ? "" : " (o endereço pode levar alguns minutos para responder)"}.`,
+      "Cole no site, antes de </body> (ou no campo de código do rodapé da plataforma):",
+      r.kit.tags,
+      "",
+      `Plataforma detectada: ${r.kit.plataforma}. Passo a passo e versão para Google Tag Manager: ${relative(ctx.project, join(ctx.work, "COMO-COLOCAR-NO-SITE.txt"))}`,
+      `WordPress: plugin pronto em ${relative(ctx.project, r.kit.wordpressZip)} (Plugins > Adicionar novo > Enviar plugin).`,
+    ].join("\n"));
+    return r;
+  }
+  const r = await publicarIa(ctx, out, { site: typeof f.site === "string" ? f.site : undefined });
+  print(ctx, { url: r.url, site: r.site, saude: r.saude }, [
+    "",
+    `Serviço da IA publicado em ${r.url}. A chave ficou como segredo na Cloudflare (nada de variável no Render ou Action no GitHub).`,
+    `O agente do site chama ${r.url}/api/ia só quando não entende uma frase.`,
+    r.site ? `Domínio liberado: ${r.site} (e localhost para testes).` : "Sem o endereço do site, só os testes no computador (localhost) usam a IA. Rode de novo com --site https://seusite.com.br.",
+    "Publique o site de novo uma vez (o agente.json ganhou o endereço do serviço). Depois, trocar a chave é só rodar este comando de novo.",
+  ].join("\n"));
+  return r;
+}
+
 // Versão 0.9: instalador visual (janela com etapas e checkboxes) no lugar das perguntas no
 // terminal. Usa os mesmos passos do assistente; depois de instalar, continua aberto para a etapa 2.
 const RECURSO_INFO = {
@@ -683,6 +884,125 @@ async function cmdInstalador(flags, pasta) {
   const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const rel = (ctx, f) => relative(ctx.project, f).split(sep).join("/") || ".";
   const FRAMEWORKS = ["Next.js", "Nuxt", "SvelteKit", "Astro", "Angular"];
+  const semNavegador = Boolean(flags["sem-navegador"]);
+  const porCategoriaDe = (criticas) => {
+    const out = {};
+    for (const c of criticas) out[CATEGORIA_TEXTO[c.categoria] || c.categoria] = (out[CATEGORIA_TEXTO[c.categoria] || c.categoria] || 0) + 1;
+    return out;
+  };
+  // Funcionalidades e aparência escolhidas na janela -> mudanças em agente.json (e perfil.json).
+  function escolhasNaBase(raw, knowledge, escolhas) {
+    const recursos = { ...knowledge.agente.recursos };
+    for (const id of RECURSOS) if (typeof escolhas.recursos?.[id] === "boolean") recursos[id] = escolhas.recursos[id];
+    const p = escolhas.agente || {};
+    const agente = { ...raw.agente, recursos };
+    if (typeof p.nome === "string" && p.nome.trim()) agente.nome = p.nome.trim().slice(0, 80);
+    if (/^#[0-9a-f]{6}$/i.test(p.cor || "")) agente.cor = p.cor;
+    if (["amigavel", "formal", "neutro"].includes(p.tom)) agente.tom = p.tom;
+    if (["direita", "esquerda"].includes(p.posicao)) agente.posicao = p.posicao;
+    if (typeof p.saudacao === "string" && p.saudacao.trim()) agente.saudacao = p.saudacao.trim().slice(0, 600);
+    const mudancas = { agente };
+    if (typeof escolhas.recursos?.perfil === "boolean") {
+      const perfil = { ...knowledge.perfil, ativo: escolhas.recursos.perfil };
+      const fonte = typeof escolhas.perfilFonte === "string" ? escolhas.perfilFonte.trim() : "";
+      if (fonte) {
+        if (!/^\/(?!\/)/.test(fonte)) throw new Error("O endereço dos dados do usuário precisa ser um caminho do próprio site, ex.: /api/minha-conta");
+        perfil.fonte = fonte;
+      }
+      mudancas.perfil = perfil;
+    }
+    return { mudancas, recursos };
+  }
+  const ligadasDe = (recursos) => RECURSOS.filter((id) => recursos[id]).map((id) => RECURSO_INFO[id][0]);
+
+  // Versão 0.12: site já publicado. Lê o site pela URL (crawler da 0.6) e monta a análise no mesmo
+  // formato do raio X da pasta, para a janela mostrar as mesmas telas.
+  async function analisarUrl(ctx, log, { setor } = {}) {
+    if (setor !== undefined) {
+      if (setor && !SECTOR_IDS.includes(setor)) throw new Error(`Setor desconhecido: ${setor}`);
+      ctx.flags.setor = setor || undefined;
+    }
+    const jaTinha = Boolean(ctx.config.destino);
+    log(`Lendo ${ctx.site} (só páginas públicas, respeitando o robots.txt)...`, 5);
+    let lidas = 0;
+    const r = await buildFromSite(ctx.site, ctx.project, {
+      setor: chosenSector(ctx),
+      maxPages: Number(flags["max-paginas"]) || 60,
+      delayMs: flags.pausa != null ? Math.max(0, Number(flags.pausa) || 0) : 400,
+      soConteudo: jaTinha,
+      log: (l) => {
+        const t = String(l).trim();
+        if (t.startsWith("/")) lidas++;
+        log(t.startsWith("/") ? `Página lida: ${t}` : t, Math.min(70, 5 + lidas));
+      },
+    });
+    ctx.config = await readJson(join(ctx.work, "config.json")).catch(() => ctx.config);
+    const { report, target: t } = await currentKnowledge(ctx);
+    if (jaTinha && ctx.flags.setor) await writeKnowledge(t.dir, { setor: sectorKnowledge(detectSector(textsFromReport(report), { forcar: ctx.flags.setor }), { siteText: siteTextOf(report) }) }, { force: true });
+    const base = checkKnowledge(await readKnowledge(t.dir)).knowledge;
+    const deteccao = detectSector(textsFromReport(report));
+    const criticas = base.acoes.candidatas.filter((c) => c.risco !== "medio");
+    log(`${r.paginas} páginas e ${r.produtos} produtos lidos. Pronto.`, 100);
+    return {
+      modo: "url",
+      origem: r.origem,
+      site: base.agente.site,
+      stack: ["Site publicado"],
+      resumo: { ...report.resumo, paginas: r.paginas, itensCatalogo: base.catalogo.itens.length || r.produtos },
+      avisos: r.avisos || [],
+      setor: { detectado: deteccao.setor, escolhido: chosenSector(ctx) || "", atual: base.setor.id, nome: base.setor.nome, ranking: deteccao.ranking.slice(0, 4).map(({ id, nome, pontos, evidencias }) => ({ id, nome, pontos, evidencias: evidencias.slice(0, 3) })) },
+      setores: SECTOR_IDS,
+      destino: { dir: rel(ctx, t.dir), publicPath: "", motivo: "site já publicado: o agente fica num serviço seu na Cloudflare" },
+      temBase: jaTinha,
+      paginasEntrada: [],
+      framework: "",
+      manual: true,
+      recursos: recursosDe(base, base.perfil),
+      perfilFonte: base.perfil.fonte || "",
+      criticas: { total: criticas.length, porCategoria: porCategoriaDe(criticas), exemplos: criticas.slice(0, 6).map((c) => ({ metodo: c.metodo, caminho: c.caminho, categoria: CATEGORIA_TEXTO[c.categoria] || c.categoria, risco: c.risco })) },
+      agente: { nome: base.agente.nome, cor: base.agente.cor, tom: base.agente.tom, posicao: base.agente.posicao, saudacao: base.agente.saudacao },
+      gemini: false,
+    };
+  }
+
+  // Versão 0.12: aplica as escolhas, melhora com a IA (se pedido) e publica o agente inteiro no
+  // serviço da Cloudflare. O site não muda até a pessoa colar a linha (próxima etapa).
+  async function instalarUrl(ctx, escolhas, log) {
+    log("Preparando...", 5);
+    const { raw, target: t } = await currentKnowledge(ctx);
+    const { knowledge } = checkKnowledge(raw);
+    const { mudancas, recursos } = escolhasNaBase(raw, knowledge, escolhas);
+    mudancas.agente = { ...mudancas.agente, endpoint: "", ia: { endpoint: "../api/ia" } };
+    if (ctx.flags.setor) await saveConfig(ctx, { setor: ctx.flags.setor });
+    await writeKnowledge(t.dir, mudancas, { force: true });
+    const ligadas = ligadasDe(recursos);
+    log(`Funcionalidades ligadas: ${ligadas.join(", ") || "só as respostas básicas"}.`, 15);
+    let ev = await cmdAvaliar(ctx);
+    const iaEsc = escolhas.ia || {};
+    const { ia } = await localIa();
+    if (iaEsc.usar && ia && iaEsc.melhorar) {
+      try {
+        log(`Melhorando a base com ${PROVEDORES[ia.provedor]?.nome || ia.provedor}...`, 25);
+        await cmdMelhorarIa(ctx, ia);
+        ev = await cmdAvaliar(ctx);
+      } catch (error) {
+        log(`A IA não respondeu (${error.message}). A base sem IA continua valendo.`);
+      }
+    }
+    log("Publicando o agente na sua conta da Cloudflare...", 40);
+    const r = await publicarCompleto(ctx, (l) => log(l, 80), { semIa: !(iaEsc.usar && ia) });
+    const resumo = [
+      `Agente publicado em ${r.url}${r.saude ? "" : " (o endereço novo pode levar alguns minutos para responder)"}.`,
+      `Funcionalidades: ${ligadas.join(", ") || "respostas básicas"}.`,
+      iaEsc.usar && ia ? `IA: ${PROVEDORES[ia.provedor]?.nome || ia.provedor} (${ia.modelo}); a chave ficou como segredo no serviço.` : "IA: desligada (o agente responde só com a base).",
+      `Acerto da base: ${ev.geral ?? "-"}%.`,
+      "Falta colar a linha no site: próxima etapa.",
+    ];
+    await writeFile(join(ctx.work, "RESUMO.txt"), `Agent Generator ${version} (instalador, site publicado) - ${new Date().toLocaleString("pt-BR")}\nSite: ${ctx.config.site}\nPasta: ${ctx.project}\n\nFeito:\n${resumo.map((x) => `- ${x}`).join("\n")}\n`);
+    log(`Pronto! Acerto da base: ${ev.geral ?? "-"}%.`, 100);
+    return { modo: "url", dir: rel(ctx, t.dir), servico: r.url, saude: Boolean(r.saude), kit: { tags: r.kit.tags, loader: r.kit.loader, guias: r.kit.guias, plataforma: r.kit.plataforma, temGtm: r.kit.temGtm }, geral: ev.geral, porcentagens: ev.porcentagens, resumo, inseridas: [], snippet: "", podeAbrirSite: false };
+  }
+
   const ops = {
     async abrir(p) {
       if (!p) throw new Error("Informe a pasta do projeto.");
@@ -700,15 +1020,28 @@ async function cmdInstalador(flags, pasta) {
     },
     async planoDesinstalar(ctx) {
       const p = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
-      return { instalado: p.instalado, pasta: p.pasta && { rel: p.pasta.rel, arquivos: p.pasta.arquivos }, paginas: p.paginas, referencias: p.referencias, trabalho: { rel: p.trabalho.rel, existe: p.trabalho.existe } };
+      return { instalado: p.instalado, pasta: p.pasta && { rel: p.pasta.rel, arquivos: p.pasta.arquivos }, paginas: p.paginas, referencias: p.referencias, trabalho: { rel: p.trabalho.rel, existe: p.trabalho.existe }, servico: ctx.config.servico?.url ? { url: ctx.config.servico.url } : null };
     },
     async desinstalar(ctx, escolhas, log) {
       log("Conferindo o que existe do agente...", 5);
       const plan = await planUninstall(ctx.project, { config: ctx.config, work: ctx.work });
       if (!plan.instalado) throw new Error("Não há agente instalado nesta pasta.");
-      return runUninstall(ctx.project, plan, { apagarTrabalho: escolhas.apagarTrabalho === true, log });
+      const servico = ctx.config.servico;
+      const r = await runUninstall(ctx.project, plan, { apagarTrabalho: escolhas.apagarTrabalho === true, log });
+      // Versão 0.11: o serviço do agente na Cloudflare (IA) sai junto, se a pessoa marcou.
+      if (escolhas.apagarServico === true && servico?.nome) {
+        try {
+          log("Apagando o serviço do agente na Cloudflare...", 95);
+          await removeFor(ctx.project, { servico });
+          r.resumo = [...(r.resumo || []), "Serviço do agente apagado da Cloudflare."];
+        } catch (error) {
+          r.resumo = [...(r.resumo || []), `O serviço na Cloudflare não foi apagado (${error.message}). Apague em Workers & Pages no painel da Cloudflare.`];
+        }
+      }
+      return r;
     },
     async analisar(ctx, log, { setor } = {}) {
+      if (ctx.modo === "url") return analisarUrl(ctx, log, { setor });
       log("Lendo os arquivos do projeto (só leitura)...", 10);
       if (setor !== undefined) {
         if (setor && !SECTOR_IDS.includes(setor)) throw new Error(`Setor desconhecido: ${setor}`);
@@ -749,6 +1082,7 @@ async function cmdInstalador(flags, pasta) {
       };
     },
     async instalar(ctx, escolhas, log) {
+      if (ctx.modo === "url") return instalarUrl(ctx, escolhas, log);
       log("Preparando...", 5);
       const report = await loadReport(ctx);
       const g = await cmdGerar(Object.assign(ctx, { flags: { ...ctx.flags, forcar: Boolean(escolhas.regerar) } }));
@@ -756,32 +1090,14 @@ async function cmdInstalador(flags, pasta) {
       // Funcionalidades marcadas e personalização vão para agente.json (e perfil.json).
       const raw = await readKnowledge(g.target.dir);
       const { knowledge } = checkKnowledge(raw);
-      const recursos = { ...knowledge.agente.recursos };
-      for (const id of RECURSOS) if (typeof escolhas.recursos?.[id] === "boolean") recursos[id] = escolhas.recursos[id];
-      const p = escolhas.agente || {};
-      const agente = { ...raw.agente, recursos };
-      if (typeof p.nome === "string" && p.nome.trim()) agente.nome = p.nome.trim().slice(0, 80);
-      if (/^#[0-9a-f]{6}$/i.test(p.cor || "")) agente.cor = p.cor;
-      if (["amigavel", "formal", "neutro"].includes(p.tom)) agente.tom = p.tom;
-      if (["direita", "esquerda"].includes(p.posicao)) agente.posicao = p.posicao;
-      if (typeof p.saudacao === "string" && p.saudacao.trim()) agente.saudacao = p.saudacao.trim().slice(0, 600);
-      const mudancas = { agente };
+      const { mudancas, recursos } = escolhasNaBase(raw, knowledge, escolhas);
       // Setor trocado na janela com a base mantida: só o setor.json muda (como no comando setor).
       if (ctx.flags.setor) {
         if (g.kept.length && !escolhas.regerar) mudancas.setor = sectorKnowledge(detectSector(textsFromReport(report), { forcar: ctx.flags.setor }), { siteText: siteTextOf(report) });
         await saveConfig(ctx, { setor: ctx.flags.setor });
       }
-      if (typeof escolhas.recursos?.perfil === "boolean") {
-        const perfil = { ...knowledge.perfil, ativo: escolhas.recursos.perfil };
-        const fonte = typeof escolhas.perfilFonte === "string" ? escolhas.perfilFonte.trim() : "";
-        if (fonte) {
-          if (!/^\/(?!\/)/.test(fonte)) throw new Error("O endereço dos dados do usuário precisa ser um caminho do próprio site, ex.: /api/minha-conta");
-          perfil.fonte = fonte;
-        }
-        mudancas.perfil = perfil;
-      }
       await writeKnowledge(g.target.dir, mudancas, { force: true });
-      const ligadas = RECURSOS.filter((id) => recursos[id]).map((id) => RECURSO_INFO[id][0]);
+      const ligadas = ligadasDe(recursos);
       log(`Funcionalidades ligadas: ${ligadas.join(", ") || "só as respostas básicas"}.`, 45);
       const inst = await cmdInstalar(Object.assign(ctx, { flags: { ...ctx.flags, inserir: false } }), { report });
       log(`Núcleo, widget e base copiados para ${rel(ctx, inst.dir)}/.`, 60);
@@ -810,11 +1126,44 @@ async function cmdInstalador(flags, pasta) {
           log(`O Gemini não respondeu (${error.message}). A base sem IA continua valendo.`);
         }
       }
+      // Versão 0.11: IA conectada no instalador (cofre): melhora a base e publica o serviço com a
+      // chave como segredo. "Sem IA" tira o endereço do serviço do agente.json.
+      const iaEsc = escolhas.ia || {};
+      let iaInfo = null;
+      if (iaEsc.usar) {
+        const { ia } = await localIa();
+        if (!ia) log("A IA foi escolhida, mas nenhuma chave está conectada: o agente segue sem IA.");
+        else {
+          if (iaEsc.melhorar) {
+            try {
+              log(`Melhorando a base com ${PROVEDORES[ia.provedor]?.nome || ia.provedor}...`, 88);
+              await cmdMelhorarIa(ctx, ia);
+              ev = await cmdAvaliar(ctx);
+            } catch (error) {
+              log(`A IA não respondeu (${error.message}). A base sem IA continua valendo.`);
+            }
+          }
+          if (iaEsc.publicar !== false) {
+            try {
+              log("Publicando o serviço da IA na sua conta da Cloudflare...", 92);
+              const r = await publicarIa(ctx, (l) => log(l, 95), { site: typeof iaEsc.site === "string" ? iaEsc.site : undefined });
+              iaInfo = { url: r.url, site: r.site, saude: Boolean(r.saude), provedor: ia.provedor, modelo: ia.modelo };
+            } catch (error) {
+              iaInfo = { erro: error.message };
+              log(`Não deu para publicar o serviço da IA (${error.message}). O agente funciona sem IA; tente de novo na etapa Inteligência artificial.`);
+            }
+          }
+        }
+      } else if (iaEsc.usar === false) {
+        const atual = await readKnowledge(inst.dir);
+        if (atual.agente?.ia) await writeKnowledge(inst.dir, { agente: { ...atual.agente, ia: null } }, { force: true });
+      }
       const resumo = [
         `Agente instalado em ${rel(ctx, inst.dir)}/.`,
         `Funcionalidades: ${ligadas.join(", ") || "respostas básicas"}.`,
         inseridas.length ? `Widget ligado em: ${inseridas.join(", ")}.` : snippet ? "Ligar o widget: veja agente-gerador/COMO-LIGAR.txt." : "As páginas já tinham o widget.",
         `Acerto da base: ${ev.geral ?? "-"}%.`,
+        ...(iaInfo?.url ? [`IA: ${PROVEDORES[iaInfo.provedor]?.nome || iaInfo.provedor} pelo serviço ${iaInfo.url} (chave guardada como segredo na Cloudflare)${iaInfo.site ? `; domínio liberado: ${iaInfo.site}` : "; informe o endereço do site para liberar o domínio"}.`] : iaInfo?.erro ? [`IA: serviço não publicado (${iaInfo.erro}).`] : []),
         ...(g.backup ? [`Backup da base anterior: ${rel(ctx, g.backup)}`] : []),
       ];
       await writeFile(
@@ -823,13 +1172,16 @@ async function cmdInstalador(flags, pasta) {
       );
       log(`Pronto! Acerto da base: ${ev.geral ?? "-"}%.`, 100);
       const root = await staticRoot(ctx.project, entries);
-      return { dir: rel(ctx, inst.dir), publicPath: inst.publicPath, inseridas, snippet, geral: ev.geral, porcentagens: ev.porcentagens, resumo, podeAbrirSite: Boolean(root && !framework) };
+      return { dir: rel(ctx, inst.dir), publicPath: inst.publicPath, inseridas, snippet, geral: ev.geral, porcentagens: ev.porcentagens, resumo, podeAbrirSite: Boolean(root && !framework), ia: iaInfo };
     },
     async testar(ctx, mensagem, contexto) {
       const { raw } = await currentKnowledge(ctx);
       const agent = createAgent(raw);
-      const r = mensagem ? agent.reply(mensagem, contexto) : { ...agent.saudacao(), contexto: {} };
-      return { texto: r.texto, itens: (r.itens || []).slice(0, 4).map((i) => ({ nome: i.nome, precoTexto: i.precoTexto, link: i.link })), acoes: r.acoes || [], sugestoes: r.sugestoes || [], intencao: r.intencao || "", confianca: r.confianca ?? null, contexto: r.contexto || {} };
+      // Versão 0.11: com a IA ligada para este site, a conversa de teste usa a chave do cofre,
+      // do mesmo jeito que o serviço do agente faria.
+      const { config } = raw.agente?.ia ? await localIa() : { config: null };
+      const r = mensagem ? (config ? await withIa(agent, config).replyAsync(mensagem, contexto) : agent.reply(mensagem, contexto)) : { ...agent.saudacao(), contexto: {} };
+      return { texto: r.texto, itens: (r.itens || []).slice(0, 4).map((i) => ({ nome: i.nome, precoTexto: i.precoTexto, link: i.link })), acoes: r.acoes || [], sugestoes: r.sugestoes || [], intencao: r.intencao || "", confianca: r.confianca ?? null, contexto: r.contexto || {}, interpretado: r.interpretado || "", fonte: r.fonte || "" };
     },
     async abrirSite(ctx) {
       const root = await staticRoot(ctx.project, await entryPages(ctx.project));
@@ -852,6 +1204,77 @@ async function cmdInstalador(flags, pasta) {
     async acerto(ctx) {
       const { raw } = await currentKnowledge(ctx);
       return evaluateKnowledge(raw).geral;
+    },
+    // ---------- Versão 0.11: IA e Cloudflare; 0.12: site já publicado ----------
+    async iaEstado(ctx) {
+      return {
+        cofre: await vaultState(),
+        provedores: Object.values(PROVEDORES).map(({ id, nome, como, resumo }) => ({ id, nome, como, resumo })),
+        links: LINKS,
+        siteUrl: ctx && ctx.modo !== "url" ? await siteUrlGuess(ctx) : ctx?.config?.site || "",
+        servico: ctx?.config?.servico?.url || "",
+      };
+    },
+    iaChave: (cfg) => saveIaKey(cfg),
+    iaOpenRouter: () => startOpenRouter({ abrir: semNavegador ? () => {} : openBrowser }),
+    iaEsquecer: (qual) => forgetVault(qual),
+    cloudflare: (token) => saveCloudflare(token),
+    abrirLink(qual) {
+      const url = LINKS[qual];
+      if (!url) throw new Error("Link desconhecido.");
+      if (!semNavegador) openBrowser(url);
+      return { url };
+    },
+    async iniciarUrl(url, base) {
+      let u;
+      try {
+        u = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+      } catch {
+        throw new Error("Endereço inválido. Ex.: https://minhaloja.com.br");
+      }
+      if (!/^https?:$/.test(u.protocol) || !u.hostname.includes(".") && !isLocalUrl(u.href)) throw new Error("Use o endereço completo do site. Ex.: https://minhaloja.com.br");
+      // Segue o redirecionamento (ex.: sem www -> com www) para ler o endereço certo.
+      let origem = u.origin;
+      try {
+        const res = await fetch(u.href, { redirect: "follow", headers: { "user-agent": USER_AGENT, accept: "text/html" }, signal: AbortSignal.timeout(15000) });
+        if (res.url) origem = new URL(res.url).origin;
+        await res.body?.cancel?.().catch?.(() => {});
+      } catch {
+        throw new Error(`Não consegui abrir ${u.origin}. Confira o endereço e a internet (ou um bloqueio de rede da empresa).`);
+      }
+      const out = resolve(base || process.cwd(), `agente-${new URL(origem).host.replace(/[^a-z0-9.-]/gi, "-")}`);
+      await mkdir(out, { recursive: true });
+      const { porta, janela, ...resto } = flags;
+      const ctx = await context(out, resto);
+      Object.assign(ctx, { modo: "url", site: origem });
+      await saveConfig(ctx, { site: origem });
+      return { ctx, info: { modo: "url", site: origem, pasta: out, temBase: Boolean(ctx.config.destino), jaPublicado: Boolean(ctx.config.servico?.url), servico: ctx.config.servico?.url || "", instalado: false } };
+    },
+    publicar: (ctx, log) => (ctx.modo === "url" || ctx.config.modo === "servico" ? publicarCompleto(ctx, log) : publicarIa(ctx, log, {})),
+    async colocar(ctx) {
+      const sv = ctx.config.servico;
+      if (!sv?.url) throw new Error("Publique o agente primeiro (etapa Publicar).");
+      const { raw } = await currentKnowledge(ctx);
+      const kit = await placementKit({ serviceUrl: sv.url, site: ctx.config.site, nome: raw.agente?.nome || "", work: ctx.work, homeHtml: await readHome(ctx.project) });
+      return { servico: sv.url, site: ctx.config.site, tags: kit.tags, loader: kit.loader, guias: kit.guias, plataforma: kit.plataforma, temGtm: kit.temGtm };
+    },
+    async verificar(ctx) {
+      const sv = ctx.config.servico;
+      if (!sv?.url) throw new Error("Publique o agente primeiro.");
+      return verifyInstall(ctx.config.site, sv.url);
+    },
+    async previa(ctx) {
+      const { raw, target: t } = await currentKnowledge(ctx);
+      const { config } = await localIa();
+      const p = await startPreview({ siteUrl: ctx.config.site, agentDir: t.dir, ia: raw.agente?.ia ? iaResponder(config, raw) : null });
+      if (!semNavegador) openBrowser(p.url);
+      return p;
+    },
+    wordpressZip: (ctx) => readFile(join(ctx.work, "agente-wordpress.zip")),
+    async removerServico(ctx) {
+      const ok = await removeFor(siteKeyOf(ctx), { servico: ctx.config.servico });
+      await saveConfig(ctx, { servico: null });
+      return { removido: ok };
     },
   };
   const janela = Boolean(flags.janela);
@@ -978,8 +1401,9 @@ export async function main(argv = process.argv.slice(2)) {
     return 0;
   }
   if (command === "site") return cmdSite(_[1], _[2], flags);
+  if (command === "ia") return cmdIa(flags);
   if (command === "instalador") return cmdInstalador(flags, _[1] || process.cwd());
-  const ctx = await context(["assistente", "observar", "treinar", "aprender", "editar", "desinstalar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
+  const ctx = await context(["assistente", "observar", "treinar", "aprender", "editar", "desinstalar", "publicar"].includes(command) ? _[1] || process.cwd() : _[1], flags);
   switch (command) {
     case "assistente": {
       const r = await cmdAssistente(ctx);
@@ -1034,6 +1458,10 @@ export async function main(argv = process.argv.slice(2)) {
       } finally {
         rl?.close();
       }
+      return 0;
+    }
+    case "publicar": {
+      await cmdPublicar(ctx);
       return 0;
     }
     case "perfil": {

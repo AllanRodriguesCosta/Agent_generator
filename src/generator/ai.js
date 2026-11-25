@@ -168,3 +168,26 @@ export async function askGemini(prompt, { apiKey, model = "gemini-3.5-flash-lite
   if (!text) throw new Error("Gemini não devolveu texto.");
   return text;
 }
+
+// Versão 0.11: OpenRouter, OpenAI, Groq e modelos locais (API compatível com OpenAI). A chave vem
+// do cofre do instalador (src/ia/cofre.js) e nunca é gravada no projeto.
+export async function askOpenAICompat(prompt, { baseUrl, apiKey, model, fetchImpl = fetch, timeoutMs = 90000 } = {}) {
+  if (!baseUrl || !model) throw new Error("Falta o endereço ou o modelo da IA.");
+  const res = await fetchImpl(`${String(baseUrl).replace(/\/+$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}), ...(/openrouter\.ai/.test(baseUrl) ? { "x-title": "Agent Generator" } : {}) },
+    body: JSON.stringify({ model, temperature: 0.4, messages: [{ role: "user", content: prompt }] }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`A IA respondeu ${res.status}. Confira a chave, o modelo e o limite gratuito.`);
+  const data = await res.json();
+  const text = data?.choices?.[0]?.message?.content || "";
+  if (!text) throw new Error("A IA não devolveu texto.");
+  return text;
+}
+
+/** ia: { provedor, chave, modelo, baseUrl } (o que o instalador conectou). */
+export function askAi(prompt, ia, opts = {}) {
+  if (!ia?.provedor) throw new Error("Conecte uma IA no instalador (ou defina GEMINI_API_KEY).");
+  return ia.provedor === "gemini" ? askGemini(prompt, { apiKey: ia.chave, model: ia.modelo || undefined, ...opts }) : askOpenAICompat(prompt, { baseUrl: ia.baseUrl, apiKey: ia.chave, model: ia.modelo, ...opts });
+}

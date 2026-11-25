@@ -1,7 +1,7 @@
 # Roadmap do Agent Generator (a partir da 0.7)
 
-> Atualizado em 24/11/2026 com a 0.10 (conversa guiada e proatividade). A conversa guiada, que
-> estava prevista para a 0.9, entrou na 0.10.
+> Atualizado em 25/11/2026 com a 0.11 (sem código: chave de IA no instalador, serviço do agente na
+> Cloudflare e site já publicado) e o plano de distribuição (landing page, download e receita).
 
 Objetivo: chegar perto do limite do que um agente **local, gratuito e sem IA obrigatória**
 consegue fazer, e deixar a IA opcional só para o que realmente precisa dela. A pesquisa que
@@ -76,6 +76,56 @@ Uso e exemplos: [CONVERSA-GUIADA.md](CONVERSA-GUIADA.md).
 | M8 | Vídeos (YouTube/Vimeo/arquivo do site) e PDFs como cartões (`midias.videos`, `midias.arquivos`) | ✅ |
 | M9 | **Perfil com listas** (várias unidades/pedidos): "De qual?", resposta por item, "todas" e item citado na frase | ✅ |
 
+## 0.11 — Sem código: chave de IA, serviço do agente e site já publicado ✅ (25/11/2026)
+
+Ideias do Allan: (1) atribuir a chave da IA já no executável, abrindo uma guia para logar como o
+Git faz; (2) usar a chave sem criar variável no Render ou Action no GitHub; (3) instalar o agente
+num site que já está no ar, sem clonar, instalar e fazer novo deploy — para o software poder ser
+baixado numa landing page e funcionar com "baixar, executar e receber o agente".
+Uso e detalhes: [SEM-CODIGO.md](SEM-CODIGO.md).
+
+**Chave de IA e serviço do agente**
+
+| # | Item | Situação |
+| --- | --- | --- |
+| C1 | Etapa **Inteligência artificial** no instalador (pasta e site publicado): Sem IA, Gemini, OpenRouter ou compatível com OpenAI | ✅ |
+| C2 | **OpenRouter em 1 clique**: o instalador abre o login no navegador e a chave volta sozinha (retorno em `127.0.0.1` + PKCE, sem cadastro de aplicativo); conta sem crédito usa modelo gratuito | ✅ |
+| C3 | **Gemini assistido**: abre a página das chaves do Google AI Studio, botão Colar (área de transferência), teste na hora listando os modelos, erros em linguagem simples | ✅ |
+| C4 | **Cofre local** das chaves na pasta do usuário (fora do projeto e do git, só o dono lê); a janela recebe só `sk-or…cdef`; "Esquecer a chave" | ✅ |
+| C5 | **Serviço do agente na Cloudflare** (conta gratuita da pessoa), publicado pela API: chave como **segredo**, sem variável no Render e sem Action no GitHub; link do token já com as permissões; subdomínio `workers.dev` criado sozinho | ✅ |
+| C6 | **Widget híbrido**: o agente continua no navegador e só a frase não entendida (anônima) vai ao serviço (`agente.ia.endpoint`); origem conferida, 6/min por visitante, teto por minuto e por dia | ✅ |
+| C7 | Melhorar a base na instalação e conversa de teste com a IA conectada (Gemini, OpenRouter ou compatível), sem `GEMINI_API_KEY` | ✅ |
+| C8 | CLI: `ia` (conectar, testar, esquecer) e `publicar` (`--token`, `--site`, `--remover`); `aprender` lê as frases guardadas pelo serviço (KV, 90 dias) | ✅ |
+
+**Site já publicado, sem código e sem novo deploy**
+
+| # | Item | Situação |
+| --- | --- | --- |
+| P1 | Instalador com dois caminhos: **Tenho a pasta do site** e **Meu site já está no ar** (só o endereço) | ✅ |
+| P2 | Leitura do site pela janela (crawler da 0.6: robots.txt, sitemap, JSON-LD), com confirmação de autorização e redirecionamento seguido (com/sem `www`) | ✅ |
+| P3 | Agente inteiro no serviço: widget, núcleo e base como **arquivos estáticos** da Cloudflare (grátis, fora do limite diário), com CORS | ✅ |
+| P4 | **Uma linha para colar** + carregador para Google Tag Manager + **guia por plataforma** (WordPress, Wix, Shopify, Webflow, Squarespace, GTM, Blogger, HTML), com a plataforma detectada no HTML | ✅ |
+| P5 | **Plugin WordPress** gerado (`agente-wordpress.zip`): Plugins > Adicionar novo > Enviar plugin | ✅ |
+| P6 | **Prévia no site real** antes de colar a linha (cópia local: sem CSP, sem cookies, formulários não são enviados) | ✅ |
+| P7 | **Verificar instalação**: linha na página, CSP do site e `/saude` do serviço | ✅ |
+| P8 | Atualizar sem redeploy do site (editar a base, reler o site e publicar de novo) e **remover** (apaga o serviço) | ✅ |
+
+## 0.12 — Distribuição: landing page, download e receita 🔜
+
+Objetivo: transformar o "baixar, executar e receber o agente" em produto, com uma página de download
+que se paga com anúncios no começo, antes de outros modelos de cobrança.
+
+| # | Item |
+| --- | --- |
+| D1 | **Landing page** estática (GitHub Pages ou domínio próprio): download do instalador do sistema detectado, vídeo curto, prints, perguntas frequentes e um guia por plataforma (WordPress, Wix, Shopify...) — que também é conteúdo para busca |
+| D2 | **Monetização inicial com AdSense**: domínio próprio (o `ads.txt` fica na raiz), páginas Sobre, Contato e Política de Privacidade (LGPD) com aviso de cookies, conteúdo original; anúncios **longe do botão de download** (a política do AdSense proíbe anúncio que pareça botão ou induza clique) |
+| D3 | **Executável assinado**: sem assinatura o Windows mostra "O Windows protegeu o computador". Caminho gratuito para código aberto: SignPath Foundation (sujeito a aprovação); alternativa: certificado de assinatura de código. macOS: notarização (Apple Developer, pago) |
+| D4 | **Aviso de atualização** no instalador (consulta a última Release do GitHub) |
+| D5 | **Release enxuta**: só o instalador por sistema (3 arquivos, o gerador e o treinador continuam disponíveis no instalador) + SHA-256 de cada arquivo |
+| D6 | Medição do funil: downloads pela API de Releases e telemetria **opcional** (opt-in, sem dado pessoal, com política de privacidade) de quais etapas as pessoas concluem |
+| D7 | Instalador e landing page em **inglês e espanhol** (mais público para os anúncios) |
+| D8 | **Modo hospedado** opcional mantido pelo projeto (quem não quer criar conta na Cloudflare): limites por site, custos e LGPD (o projeto vira operador dos dados) — base para um plano pago no futuro |
+
 ## 1.0 — Medição, idiomas e plataforma ⏳
 
 | # | Item |
@@ -86,7 +136,16 @@ Uso e exemplos: [CONVERSA-GUIADA.md](CONVERSA-GUIADA.md).
 | N4 | Editor visual das bases novas: glossário, conteúdos, interações, galerias e moldes de perfil (era I6) |
 | N5 | Glossário próprio do site sugerido no `aprender` (era I7) |
 | N6 | Atualização incremental que preserva edições (era J5); setores por contribuição (era J4) |
-| N7 | Catálogo de ações (`acoes.json`) + servidor MCP (eram K1/K2); verificação de domínio (K3); npm e executável assinado (K4) |
+| N7 | Catálogo de ações (`acoes.json`) + servidor MCP (eram K1/K2); verificação de domínio (K3); pacote no npm (K4; a assinatura do executável foi para a 0.12, D3) |
+
+## Pesquisa (sem data)
+
+| # | Item |
+| --- | --- |
+| R1 | **Gemini 100% automático** (sem copiar a chave): login do Google + API Keys do Google Cloud. Exige aplicativo OAuth verificado pelo Google (escopo `cloud-platform`, site e política de privacidade) e, desde maio/2026, chaves de autorização ligadas a conta de serviço. Depende da landing page (D1/D2). Hoje: assistido (C3) ou OpenRouter em 1 clique (C2) |
+| R2 | **Entrar com GitHub** (device flow, como o Git): abrir um PR com o agente no repositório do cliente ou publicar a base no GitHub Pages |
+| R3 | Outros destinos do serviço: Netlify, Deno Deploy, o próprio servidor (`servico.js` + Docker); Vercel só para uso não comercial (plano Hobby) |
+| R4 | Plugin no diretório oficial do WordPress (instalar buscando "Agent Generator" e atualizar a base sozinho) |
 
 ## Como cada versão é validada
 
@@ -103,3 +162,8 @@ Uso e exemplos: [CONVERSA-GUIADA.md](CONVERSA-GUIADA.md).
 - 0.9: instalador percorrido de ponta a ponta num navegador de verdade (8 etapas, instalação,
   conversa de teste, treino iniciado e encerrado, sem erros no console) e teste de fumaça do
   executável no CI (`scripts/smoke-instalador.mjs`).
+- 0.11: Cloudflare, OpenRouter e Google simulados nos testes (nenhum teste sai para a internet); o
+  serviço (Worker) roda no Node com o mesmo grafo de módulos publicado; os dois caminhos do
+  instalador percorridos num navegador de verdade (OpenRouter em 1 clique, Gemini com chave errada e
+  certa, Cloudflare, publicar, colocar no site, verificar, prévia e conversa com IA, sem erros de
+  JavaScript no console).

@@ -1,5 +1,7 @@
 // Instalador visual do Agent Generator (versão 0.9). Sem bibliotecas: cada etapa monta o seu
 // conteúdo, mostra as instruções do que fazer e conversa com o servidor local (/api/...).
+// Versão 0.11: etapa "Inteligência artificial" (OpenRouter em 1 clique, Gemini assistido) e serviço
+// do agente na Cloudflare. Versão 0.12: caminho "Meu site já está no ar" (só o endereço).
 (function () {
   "use strict";
   var TOKEN = new URLSearchParams(location.search).get("t") || "";
@@ -50,12 +52,17 @@
     etapa: 0,
     max: 0,
     estado: null,
-    escolhas: { recursos: {}, perfilFonte: "", agente: {}, inserir: true, regerar: false, gemini: false },
+    escolhas: novasEscolhas(),
+    fluxo: "instalar",
+    ia: null,
     chat: { msgs: [], contexto: {} },
     modo: "treinar",
     sessaoOpcoes: { url: "", permitirNpm: false, minutos: 30 },
     polling: null,
   };
+  function novasEscolhas() {
+    return { recursos: {}, perfilFonte: "", agente: {}, inserir: true, regerar: false, gemini: false, ia: { usar: false, melhorar: true, publicar: true, site: "" } };
+  }
   var CORES = ["#6d28d9", "#2563eb", "#0f766e", "#16a34a", "#ea580c", "#db2777", "#111827"];
   var TONS = { amigavel: "Amigável", formal: "Formal", neutro: "Neutro (só o conteúdo)" };
 
@@ -67,21 +74,46 @@
   function falha(e) { status(e.message || String(e), true); }
 
   // ---------- etapas ----------
+  // Versão 0.11: IA opcional, nas duas instalações (pasta e site publicado).
+  var ETAPA_IA = {
+    id: "ia",
+    nome: "Inteligência artificial",
+    dica: "opcional: entender melhor",
+    titulo: "Inteligência artificial (opcional)",
+    sub: "O agente já responde sozinho com a base do site. A IA só entra quando ele não entende uma frase: ela reescreve o pedido e quem responde continua sendo a base.",
+    passos: [
+      "Escolha Sem IA (grátis, nada sai do site) ou um provedor.",
+      "OpenRouter: clique em Entrar com OpenRouter, entre no navegador e clique em Authorize. A chave volta sozinha.",
+      "Gemini: abra o Google AI Studio, copie a chave, volte e clique em Colar. O instalador testa na hora.",
+      "A chave fica no cofre do seu usuário (fora do projeto) e, publicada, como segredo no seu serviço da Cloudflare. Nada de variável no Render ou Action no GitHub.",
+    ],
+    montar: telaIa,
+    pode: function () {
+      var ia = S.escolhas.ia;
+      if (!ia.usar) return true;
+      var c = S.ia && S.ia.cofre;
+      if (!c || !c.ia) return false;
+      if (S.fluxo === "site" || ia.publicar === false) return true;
+      return Boolean(c.cloudflare);
+    },
+  };
   var INSTALAR = [
     {
+      id: "boas",
       nome: "Boas-vindas",
       dica: "o que vai acontecer",
       titulo: "Bem-vindo ao instalador do Agent Generator",
-      sub: "Em poucos minutos o seu site ganha um assistente que tira dúvidas, mostra produtos e leva a pessoa até a página certa — sem IA paga e sem mandar o projeto para fora.",
+      sub: "Em poucos minutos o seu site ganha um assistente que tira dúvidas, mostra produtos e leva a pessoa até a página certa — sem mensalidade e sem IA obrigatória.",
       passos: [
-        "Leia o resumo abaixo para saber o que o instalador vai fazer.",
-        "Se estiver editando o site agora, salve o que estiver aberto: o instalador pode inserir uma linha nas páginas (com cópia de segurança).",
-        "Clique em Próximo para escolher a pasta do projeto.",
+        "Escolha como está o seu site: com a pasta do código no computador ou já no ar (só o endereço).",
+        "Leia o resumo para saber o que o instalador vai fazer.",
+        "Clique em Próximo.",
       ],
       montar: telaBoasVindas,
       pode: function () { return true; },
     },
     {
+      id: "pasta",
       nome: "Pasta do projeto",
       dica: "onde está o site",
       titulo: "Qual é a pasta do seu site?",
@@ -95,6 +127,7 @@
       pode: function () { return Boolean(S.estado && S.estado.info); },
     },
     {
+      id: "raiox",
       nome: "Raio X",
       dica: "o instalador lê o projeto",
       titulo: "Raio X do projeto",
@@ -108,6 +141,7 @@
       pode: function () { return Boolean(S.estado && S.estado.analise); },
     },
     {
+      id: "recursos",
       nome: "Funcionalidades",
       dica: "o que o agente pode fazer",
       titulo: "O que o agente pode fazer?",
@@ -122,6 +156,7 @@
       pode: function () { return true; },
     },
     {
+      id: "aparencia",
       nome: "Aparência",
       dica: "nome, cor e tom",
       titulo: "Como o agente se apresenta",
@@ -134,7 +169,9 @@
       montar: telaAparencia,
       pode: function () { return true; },
     },
+    ETAPA_IA,
     {
+      id: "instalacao",
       nome: "Instalação",
       dica: "copiar e ligar o widget",
       titulo: "Pronto para instalar",
@@ -148,6 +185,7 @@
       pode: function () { return Boolean(S.estado && S.estado.instalacao); },
     },
     {
+      id: "teste",
       nome: "Teste",
       dica: "converse com o agente",
       titulo: "Teste o seu agente",
@@ -161,6 +199,7 @@
       pode: function () { return true; },
     },
     {
+      id: "etapa2",
       nome: "Etapa 2",
       dica: "interação assistida",
       titulo: "Etapa 2 — Interação assistida",
@@ -179,6 +218,7 @@
   // Versão 0.9: desinstalar o agente encontrado na pasta (fluxo próprio, com 2 etapas).
   var DESINSTALAR = [
     {
+      id: "des-revisar",
       nome: "Revisar",
       dica: "o que vai sair",
       titulo: "Desinstalar o agente",
@@ -195,6 +235,7 @@
       pode: function () { return Boolean(S.plano && S.plano.instalado); },
     },
     {
+      id: "des-executar",
       nome: "Desinstalação",
       dica: "remoção e resumo",
       titulo: "Desinstalação",
@@ -208,7 +249,87 @@
       pode: function () { return true; },
     },
   ];
+  // Versão 0.12: site já publicado (WordPress, Wix, Shopify...): só o endereço, sem novo deploy.
+  var SITE = [
+    null, // Boas-vindas (a mesma tela do instalador da pasta)
+    {
+      id: "endereco",
+      nome: "Endereço do site",
+      dica: "o site que já está no ar",
+      titulo: "Qual é o endereço do seu site?",
+      sub: "O instalador lê as páginas públicas, como um visitante. Não precisa do código, de senha nem de acesso à hospedagem.",
+      passos: [
+        "Digite o endereço do site (ex.: https://minhaloja.com.br).",
+        "Confirme que o site é seu ou que você tem autorização para lê-lo.",
+        "Clique em Ler este site. O instalador nunca entra em login, carrinho ou área do cliente e não envia formulários.",
+      ],
+      montar: telaEndereco,
+      pode: function () { return Boolean(S.estado && S.estado.info && S.estado.info.modo === "url"); },
+    },
+    {
+      id: "raiox",
+      nome: "Leitura do site",
+      dica: "páginas públicas",
+      titulo: "Leitura do site",
+      sub: "Páginas, perguntas frequentes, produtos marcados para o Google e formulários. Respeita o robots.txt e faz pausas entre as páginas.",
+      passos: [
+        "Aguarde a leitura terminar (ela começa sozinha).",
+        "Confira os números: páginas, formulários, perguntas e itens de catálogo.",
+        "Se o tipo de negócio estiver errado, escolha o certo e clique em Refazer a leitura.",
+      ],
+      montar: telaRaioX,
+      pode: function () { return Boolean(S.estado && S.estado.analise); },
+    },
+    null, // Funcionalidades
+    null, // Aparência
+    ETAPA_IA,
+    {
+      id: "publicar",
+      nome: "Publicar",
+      dica: "serviço grátis na Cloudflare",
+      titulo: "Publicar o agente",
+      sub: "O agente vai para um serviço seu, gratuito, na Cloudflare. O seu site não muda até você colar uma linha (próxima etapa).",
+      passos: [
+        "Conecte a Cloudflare (só na primeira vez): crie a conta grátis, clique em Criar chave de publicação e cole o token aqui.",
+        "Clique em Publicar e acompanhe o progresso.",
+        "Pronto: o agente fica num endereço seu (…workers.dev). Clique em Próximo para colocar no site.",
+      ],
+      montar: telaPublicar,
+      pode: function () { return Boolean(S.estado && S.estado.instalacao); },
+    },
+    {
+      id: "colocar",
+      nome: "Colocar no site",
+      dica: "uma linha, sem novo deploy",
+      titulo: "Coloque o agente no seu site",
+      sub: "Uma linha no rodapé do site (ou o plugin no WordPress). Sem baixar o código e sem novo deploy.",
+      passos: [
+        "Copie a linha e cole no campo de código do rodapé da sua plataforma (o passo a passo da sua plataforma está abaixo).",
+        "No WordPress é ainda mais fácil: baixe o plugin e envie em Plugins > Adicionar novo > Enviar plugin.",
+        "Quer ver antes? Clique em Ver prévia no meu site. Depois de colar, clique em Verificar instalação.",
+      ],
+      montar: telaColocar,
+      pode: function () { return true; },
+    },
+    null, // Teste
+  ];
+  SITE[0] = INSTALAR[0];
+  SITE[3] = INSTALAR[3];
+  SITE[4] = INSTALAR[4];
+  SITE[SITE.length - 1] = INSTALAR[INSTALAR.length - 2];
   var ETAPAS = INSTALAR;
+  function idx(id) {
+    for (var i = 0; i < ETAPAS.length; i++) if (ETAPAS[i].id === id) return i;
+    return 0;
+  }
+  function liberar(id) {
+    S.max = Math.max(S.max, idx(id));
+    desenharLado();
+  }
+  function usarFluxo(nome) {
+    S.fluxo = nome;
+    ETAPAS = nome === "site" ? SITE : nome === "desinstalar" ? DESINSTALAR : INSTALAR;
+  }
 
   function entrarDesinstalar() {
     if (ocupado()) return;
@@ -222,9 +343,9 @@
   function voltarInstalar(inicio) {
     ETAPAS = INSTALAR;
     S.fluxo = "instalar";
-    S.max = inicio ? 0 : Math.max(S.max, 1);
-    if (inicio) S.escolhas = { recursos: {}, perfilFonte: "", agente: {}, inserir: true, regerar: false, gemini: false };
-    recarregar().then(function () { ir(inicio ? 0 : 1); });
+    S.max = inicio ? 0 : Math.max(S.max, idx("pasta"));
+    if (inicio) S.escolhas = novasEscolhas();
+    recarregar().then(function () { ir(inicio ? 0 : idx("pasta")); });
   }
   function cartaoJaInstalado(info) {
     return el("div", { class: "cartao destaque ja" }, [
@@ -260,6 +381,7 @@
         el("div", { class: "cartao" }, [el("h3", { text: "O que a desinstalação vai fazer" }), el("ul", { class: "checks" }, itens)]),
         p.trabalho.existe ? card : null,
         p.referencias.length ? el("div", { class: "aviso alerta" }, [el("strong", { text: "Linha colada à mão: " }), "estes arquivos citam o widget e não foram alterados pelo instalador, então ele não mexe neles. Depois, apague a linha você mesmo: " + p.referencias.join(", ")]) : null,
+        p.servico ? opcaoCheck("des-servico", "Apagar também o serviço do agente na Cloudflare", "Serviço da IA em " + p.servico.url + ". Desmarcado, ele continua no ar (dá para apagar depois no painel da Cloudflare).", S.apagarServico !== false, function (v) { S.apagarServico = v; }) : null,
         el("div", { class: "linha" }, [el("button", { class: "btn sec", type: "button", text: "Voltar ao instalador", onclick: function () { voltarInstalar(false); } })]),
       );
       atualizarBotoes();
@@ -276,7 +398,7 @@
     if (S.desinstalacao) return mostrarDes(area, S.desinstalacao);
     add(area, el("h3", { text: "Desinstalando…" }));
     var ver = progresso(area);
-    api("POST", "/api/desinstalar", { apagarTrabalho: Boolean(S.apagarTrabalho) })
+    api("POST", "/api/desinstalar", { apagarTrabalho: Boolean(S.apagarTrabalho), apagarServico: Boolean(S.plano && S.plano.servico) && S.apagarServico !== false })
       .then(function () { atualizarBotoes(); return acompanhar(ver); })
       .then(function (r) { S.desinstalacao = r; return recarregar().then(function () { mostrarDes(area, r); status("Agente desinstalado."); }); })
       .catch(function (e) { falha(e); add(area, el("p", { class: "aviso erro", text: e.message })); });
@@ -390,21 +512,50 @@
 
   // ---------- telas ----------
   function telaBoasVindas(c) {
-    if (S.estado && S.estado.info && S.estado.info.instalado) add(c, cartaoJaInstalado(S.estado.info));
+    var url = S.fluxo === "site";
+    // Versão 0.12: dois caminhos. Pasta do código (como antes) ou site já no ar (só o endereço).
+    var modos = el("div", { class: "modos", role: "radiogroup", "aria-label": "Como está o seu site" });
+    [
+      ["instalar", "Tenho a pasta do site", "O código do site está neste computador (HTML, React, Vite, Next...). O agente é instalado na pasta e vai para o ar com o site."],
+      ["site", "Meu site já está no ar", "Só o endereço: WordPress, Wix, Shopify ou qualquer plataforma. Sem baixar o código e sem novo deploy. No fim, você cola uma linha no site."],
+    ].forEach(function (m) {
+      var sel = S.fluxo === m[0];
+      add(modos, el("button", { type: "button", role: "radio", "aria-checked": sel ? "true" : "false", class: "modo" + (sel ? " sel" : ""), onclick: function () {
+        if (ocupado() || S.fluxo === m[0]) return;
+        usarFluxo(m[0]);
+        S.max = 0;
+        ir(0);
+      } }, [el("strong", { text: m[1] }), el("span", { text: m[2] })]));
+    });
+    add(c, el("div", { class: "cartao" }, [el("h3", { text: "Como está o seu site?" }), modos]));
+    if (!url && S.estado && S.estado.info && S.estado.info.instalado) add(c, cartaoJaInstalado(S.estado.info));
     add(c,
-      el("div", { class: "grade" }, [
-        destaque("★", "Sem custo e sem IA obrigatória", "O agente roda no navegador de quem visita o site, com a base de conhecimento criada a partir do próprio projeto."),
-        destaque("⟲", "Com cópia de segurança", "Tudo que o instalador alterar fica guardado em agente-gerador/backup. Dá para desfazer."),
-        destaque("✎", "Melhora conversando", "Depois de instalar, a etapa 2 abre o site em modo treino: você corrige as respostas na hora."),
-      ]),
+      el("div", { class: "grade" }, url
+        ? [
+            destaque("★", "Sem mexer no código", "O instalador lê as páginas públicas do site e monta a base de conhecimento, sem pedir senha nem acesso à hospedagem."),
+            destaque("☁", "No ar em minutos", "O agente fica num serviço seu, gratuito, na Cloudflare. O site só ganha uma linha (ou um plugin no WordPress)."),
+            destaque("⟲", "Fácil de tirar", "Para remover, apague a linha (ou desative o plugin) e clique em Remover o agente."),
+          ]
+        : [
+            destaque("★", "Sem custo e sem IA obrigatória", "O agente roda no navegador de quem visita o site, com a base de conhecimento criada a partir do próprio projeto."),
+            destaque("⟲", "Com cópia de segurança", "Tudo que o instalador alterar fica guardado em agente-gerador/backup. Dá para desfazer."),
+            destaque("✎", "Melhora conversando", "Depois de instalar, a etapa 2 abre o site em modo treino: você corrige as respostas na hora."),
+          ]),
       el("div", { class: "cartao" }, [
         el("h3", { text: "O que vai acontecer" }),
-        el("ol", { class: "linha-tempo" }, [
-          el("li", { text: "Você confirma a pasta do site e o instalador faz o raio X (só leitura)." }),
-          el("li", { text: "Você marca as funcionalidades e a aparência do agente." }),
-          el("li", { text: "O instalador cria a pasta do agente, liga o widget nas páginas e testa a base." }),
-          el("li", { text: "Você conversa com o agente e, na etapa 2, ensina o que faltar." }),
-        ]),
+        el("ol", { class: "linha-tempo" }, url
+          ? [
+              el("li", { text: "Você informa o endereço do site e o instalador lê as páginas públicas." }),
+              el("li", { text: "Você marca as funcionalidades, a aparência e, se quiser, conecta uma IA." }),
+              el("li", { text: "O instalador publica o agente num serviço seu, gratuito, na Cloudflare." }),
+              el("li", { text: "Você cola uma linha no site (ou envia o plugin no WordPress) e confere com a prévia." }),
+            ]
+          : [
+              el("li", { text: "Você confirma a pasta do site e o instalador faz o raio X (só leitura)." }),
+              el("li", { text: "Você marca as funcionalidades, a aparência e, se quiser, conecta uma IA." }),
+              el("li", { text: "O instalador cria a pasta do agente, liga o widget nas páginas e testa a base." }),
+              el("li", { text: "Você conversa com o agente e, na etapa 2, ensina o que faltar." }),
+            ]),
       ]),
     );
   }
@@ -453,12 +604,12 @@
       if (!area.isConnected) c.prepend(area);
       area.textContent = "";
       res.textContent = "";
-      add(area, el("h3", { text: "Lendo o projeto…" }));
+      add(area, el("h3", { text: S.fluxo === "site" ? "Lendo o site… (as páginas aparecem abaixo)" : "Lendo o projeto…" }));
       var ver = progresso(area);
       api("POST", "/api/analisar", setor !== undefined ? { setor: setor } : {})
         .then(function () { atualizarBotoes(); return acompanhar(ver); })
         .then(function () { return recarregar(); })
-        .then(function () { area.textContent = ""; mostrar(); S.max = Math.max(S.max, 3); desenharLado(); })
+        .then(function () { area.textContent = ""; mostrar(); liberar("recursos"); })
         .catch(function (e) { falha(e); add(area, el("p", { class: "aviso erro", text: e.message })); });
     }
     function mostrar() {
@@ -470,7 +621,9 @@
         el("div", { class: "cartao" }, [
           el("h3", { text: a.site || "Seu site" }),
           el("p", {}, ["Tipo de projeto: ", el("strong", { text: a.stack.join(", ") || "site estático (HTML)" })]),
-          el("p", {}, ["O agente vai ficar em ", el("strong", { text: a.destino.dir + "/" }), el("span", { class: "muted", text: " (" + a.destino.motivo + ")" })]),
+          a.modo === "url"
+            ? el("p", {}, ["Site: ", el("strong", { text: a.origem }), el("span", { class: "muted", text: " · base guardada em " + a.destino.dir + "/ (" + a.destino.motivo + ")" })])
+            : el("p", {}, ["O agente vai ficar em ", el("strong", { text: a.destino.dir + "/" }), el("span", { class: "muted", text: " (" + a.destino.motivo + ")" })]),
           a.temBase ? el("p", { class: "aviso info", text: "Já existe uma base de conhecimento ali (talvez editada à mão). Ela será mantida, a não ser que você peça para regerar na etapa de instalação." }) : null,
         ]),
         cartaoSetor(a),
@@ -487,7 +640,7 @@
         el("h3", { text: "Tipo de negócio (setor)" }),
         el("p", {}, ["Setor usado: ", el("strong", { text: a.setor.nome }), top && top.evidencias.length ? el("span", { class: "muted pequeno", text: " — sinais: " + top.evidencias.join(", ") }) : null]),
         el("p", { class: "muted pequeno", text: "O setor traz um glossário com os termos comuns do ramo (português e inglês) para o agente entender sinônimos." }),
-        el("div", { class: "linha" }, [sel, el("button", { class: "btn sec", type: "button", text: "Refazer o raio X", onclick: function () { rodar(sel.value); } })]),
+        el("div", { class: "linha" }, [sel, el("button", { class: "btn sec", type: "button", text: S.fluxo === "site" ? "Refazer a leitura" : "Refazer o raio X", onclick: function () { rodar(sel.value); } })]),
       ]);
     }
     function num(n, t) { return el("div", { class: "numero" }, [el("b", { text: String(n) }), el("span", { text: t })]); }
@@ -607,6 +760,7 @@
         el("li", {}, ["Agente em ", el("strong", { text: a.destino.dir + "/" }), " (núcleo, widget e base de conhecimento)"]),
         el("li", { text: "Funcionalidades: " + (ligadas.join(", ") || "só as respostas básicas") }),
         el("li", { text: "Aparência: " + (e.agente.nome || a.agente.nome) + " · " + (TONS[e.agente.tom || a.agente.tom] || "") + " · lado " + (e.agente.posicao || a.agente.posicao) }),
+        el("li", { class: e.ia.usar ? "" : "nao", text: e.ia.usar && S.ia && S.ia.cofre && S.ia.cofre.ia ? "IA: " + nomeProvedor(S.ia.cofre.ia.provedor) + (e.ia.publicar !== false ? " · chave como segredo no serviço da Cloudflare" + (e.ia.site ? " · domínio " + e.ia.site : "") : " · só para melhorar a base agora") : "IA: desligada (o agente responde só com a base)" }),
       ]),
     ]);
     var acao = el("div", { class: "cartao" });
@@ -623,8 +777,7 @@
         .then(function () { atualizarBotoes(); return acompanhar(ver); })
         .then(function () { return recarregar(); })
         .then(function () {
-          S.max = Math.max(S.max, 6);
-          desenharLado();
+          liberar("teste");
           mostrarFeito(acao, S.estado.instalacao);
           status("Instalado! Clique em Próximo para testar.");
         })
@@ -655,10 +808,23 @@
       add(barras, el("div", {}, [el("span", { text: nomes[k] || k }), b, el("span", { text: v + "%" })]));
     });
     var site = el("div");
-    if (r.podeAbrirSite) {
+    if (S.fluxo === "site") {
+      add(site,
+        el("p", { class: "muted pequeno", text: "Veja o agente no seu site publicado (prévia local, sem mexer no site) ou edite a base e publique de novo." }),
+        el("div", { class: "linha" }, [
+          el("button", { class: "btn sec", type: "button", text: "Ver prévia no meu site", onclick: function () { api("POST", "/api/previa").then(function (p) { status("Prévia aberta no navegador: " + p.url); }).catch(falha); } }),
+          el("button", { class: "btn sec", type: "button", text: "Editar a base", onclick: function () { api("POST", "/api/editor").then(function (x) { status("Editor aberto no navegador. Depois de editar, clique em Publicar de novo."); window.open(x.url, "_blank", "noopener"); }).catch(falha); } }),
+          el("button", { class: "btn sec", type: "button", text: "Publicar de novo", onclick: republicar }),
+        ]),
+      );
+    } else if (r.podeAbrirSite) {
       add(site, el("button", { class: "btn sec", type: "button", text: S.estado.site ? "Abrir o site de novo" : "Abrir o site com o agente", onclick: abrirSite }));
       if (S.estado.site) add(site, el("p", { class: "pequeno muted" }, ["Site em ", el("a", { href: S.estado.site.url, target: "_blank", rel: "noopener", text: S.estado.site.url })]));
     } else add(site, el("p", { class: "muted pequeno", text: "Seu projeto não é HTML simples: rode o site do seu jeito (ex.: npm run dev) para ver o agente. Na etapa 2 o instalador abre o site com o agente em modo treino." }));
+    function republicar() {
+      status("Publicando de novo…");
+      api("POST", "/api/publicar").then(function () { atualizarBotoes(); return acompanhar(function () {}); }).then(function (x) { status("Publicado de novo em " + x.url + "."); atualizarBotoes(); }).catch(falha);
+    }
     function abrirSite() {
       api("POST", "/api/site").then(function (s) { return recarregar().then(function () { status("Site aberto em " + s.url); site.textContent = ""; add(site, el("p", { class: "pequeno" }, ["Site em ", el("a", { href: s.url, target: "_blank", rel: "noopener", text: s.url })])); }); }).catch(falha);
     }
@@ -675,6 +841,7 @@
         var box = el("div", { class: "msg ag" }, [m.texto]);
         (m.itens || []).forEach(function (i) { add(box, el("div", { class: "pequeno", text: "• " + i.nome + (i.precoTexto ? " — " + i.precoTexto : "") })); });
         (m.acoes || []).forEach(function (x) { add(box, el("div", { class: "pequeno", text: "→ " + x.rotulo + " (" + x.href + ")" })); });
+        if (m.interpretado) add(box, el("span", { class: "meta", text: "IA: entendi como “" + m.interpretado + "”" }));
         if (m.intencao) add(box, el("span", { class: "meta", text: "entendeu: " + m.intencao + (m.confianca != null ? " · confiança " + m.confianca : "") }));
         if (m.sugestoes && m.sugestoes.length) add(box, el("div", { class: "chips" }, m.sugestoes.map(function (s) { return el("button", { type: "button", text: s, onclick: function () { enviar(s); } }); })));
         add(lista, box);
@@ -795,6 +962,361 @@
     })();
   }
 
+  // ---------- Versão 0.11: inteligência artificial e Cloudflare ----------
+  function opcaoCheck(id, titulo, desc, valor, onChange, desabilitado) {
+    var cb = el("input", { type: "checkbox", id: id, disabled: desabilitado });
+    cb.checked = Boolean(valor);
+    var card = el("label", { class: "opcao" + (valor ? " marcada" : "") + (desabilitado ? " indisponivel" : ""), for: id }, [cb, el("span", { class: "t", text: titulo }), el("span", { class: "d", text: desc })]);
+    cb.addEventListener("change", function () { card.classList.toggle("marcada", cb.checked); onChange(cb.checked); });
+    return card;
+  }
+  function botaoCopiar(texto, rotulo) {
+    return el("button", { class: "btn sec", type: "button", text: rotulo || "Copiar", onclick: function () {
+      if (!navigator.clipboard) return status("Selecione o texto e copie com Ctrl+C.");
+      navigator.clipboard.writeText(texto).then(function () { status("Copiado."); }, function () { status("Selecione o texto e copie com Ctrl+C."); });
+    } });
+  }
+  function campoSecreto(id, rotulo) {
+    return el("input", { type: "password", id: id, autocomplete: "off", spellcheck: "false", "aria-label": rotulo, placeholder: rotulo });
+  }
+  function colarEm(input, depois) {
+    if (!navigator.clipboard || !navigator.clipboard.readText) { input.focus(); return status("Clique no campo e cole com Ctrl+V."); }
+    navigator.clipboard.readText().then(function (t) {
+      input.value = String(t || "").trim();
+      if (input.value) depois();
+      else { input.focus(); status("A área de transferência está vazia. Copie a chave e tente de novo."); }
+    }, function () { input.focus(); status("Clique no campo e cole com Ctrl+V."); });
+  }
+  function abrirLink(qual) {
+    return api("POST", "/api/ia/abrir", { qual: qual }).then(function (r) { status("Abrimos no navegador: " + r.url); });
+  }
+  function carregarIa() {
+    return api("GET", "/api/ia").then(function (r) {
+      S.ia = r;
+      if (S.escolhas.ia && !S.escolhas.ia.site && r.siteUrl && S.fluxo !== "site") S.escolhas.ia.site = r.siteUrl;
+      atualizarBotoes();
+      return r;
+    });
+  }
+  function nomeProvedor(id) {
+    var p = ((S.ia && S.ia.provedores) || []).filter(function (x) { return x.id === id; })[0];
+    return p ? p.nome : id;
+  }
+
+  function telaIa(c) {
+    var e = S.escolhas;
+    var area = el("div", { class: "conteudo" }, el("p", { class: "muted", text: "Carregando…" }));
+    add(c, area);
+    carregarIa().then(desenhar).catch(falha);
+    function desenhar() {
+      area.textContent = "";
+      var cofre = S.ia.cofre || {};
+      var escolhido = e.ia.usar ? S.iaProvedor || (cofre.ia && cofre.ia.provedor) || "openrouter" : "";
+      var grade = el("div", { class: "modos ia-modos", role: "radiogroup", "aria-label": "Inteligência artificial" });
+      [{ id: "", nome: "Sem IA", como: "padrão", resumo: "O agente responde só com a base do site. Grátis, e nada sai do site." }].concat(S.ia.provedores).forEach(function (p) {
+        var sel = p.id === escolhido;
+        add(grade, el("button", { type: "button", role: "radio", "aria-checked": sel ? "true" : "false", class: "modo" + (sel ? " sel" : ""), onclick: function () {
+          e.ia.usar = Boolean(p.id);
+          S.iaProvedor = p.id;
+          S.iaTrocar = false;
+          desenhar();
+        } }, [el("strong", {}, [p.nome + " ", el("span", { class: "selo " + (p.id ? "info" : "ok"), text: p.como })]), el("span", { text: p.resumo })]));
+      });
+      add(area, grade);
+      if (!e.ia.usar) {
+        add(area, el("p", { class: "aviso info", text: "Sem IA o agente continua completo: perguntas frequentes, páginas, catálogo, formulários e fotos. Dá para ligar a IA depois, abrindo o instalador de novo." }));
+        return atualizarBotoes();
+      }
+      var conectado = cofre.ia && cofre.ia.provedor === escolhido && !S.iaTrocar;
+      add(area, conectado ? cartaoIaConectada(cofre.ia, desenhar) : painelProvedor(escolhido, desenhar));
+      if (conectado) {
+        add(area, opcaoCheck("ia-melhorar", "Melhorar a base com a IA na instalação", "A IA sugere exemplos e perguntas a partir do conteúdo do site. Tudo passa pela conferência da base: nada de preço, prazo ou regra inventada.", e.ia.melhorar, function (v) { e.ia.melhorar = v; }));
+        if (S.fluxo === "site") add(area, el("p", { class: "aviso info", text: "No site já publicado, a chave vai como segredo para o seu serviço do agente (próxima etapa). O navegador de quem visita o site nunca vê a chave." }));
+        else {
+          var cf = el("div");
+          var site = el("input", { type: "url", id: "ia-site", placeholder: "https://minhaloja.com.br", value: e.ia.site || "" });
+          site.addEventListener("input", function () { e.ia.site = site.value.trim(); });
+          var destino = el("div", { class: "cartao" }, [
+            el("h3", { text: "Onde a chave fica" }),
+            el("p", { class: "muted", text: "Num serviço seu, gratuito, na Cloudflare: a chave fica lá como segredo e o agente do site chama o serviço só quando não entende. Sem variável no Render, sem Action no GitHub e sem a chave no código do site." }),
+            el("label", { class: "campo", for: "ia-site" }, ["Endereço do site no ar", el("span", { class: "ajuda", text: "Só esse domínio (e o seu computador, para testes) pode usar o serviço. Se o site ainda não está no ar, deixe em branco e rode o instalador de novo depois." }), site]),
+            cf,
+          ]);
+          add(area, opcaoCheck("ia-publicar", "Publicar o serviço da IA na Cloudflare (recomendado)", "Desmarcado, a IA só melhora a base agora; o agente do site fica sem IA.", e.ia.publicar !== false, function (v) { e.ia.publicar = v; destino.classList.toggle("escondido", !v); atualizarBotoes(); }), destino);
+          destino.classList.toggle("escondido", e.ia.publicar === false);
+          painelCloudflare(cf, desenhar);
+        }
+      }
+      atualizarBotoes();
+    }
+  }
+  function cartaoIaConectada(ia, redesenhar) {
+    return el("div", { class: "cartao destaque ja" }, [
+      el("div", { class: "ico", "aria-hidden": "true", text: "✓" }),
+      el("div", { class: "conteudo" }, [
+        el("div", {}, [el("strong", { text: nomeProvedor(ia.provedor) + " conectado" }), el("span", { text: "Modelo: " + (ia.modelo || "-") + " · chave " + ia.chave + (ia.gratis ? " · plano gratuito (com limite diário de pedidos)" : "") })]),
+        el("div", { class: "linha" }, [
+          el("button", { class: "btn sec", type: "button", text: "Trocar a chave", onclick: function () { S.iaTrocar = true; redesenhar(); } }),
+          el("button", { class: "btn perigo", type: "button", text: "Esquecer a chave", onclick: function () {
+            if (!confirm("Apagar a chave da IA do cofre deste computador? (Um serviço já publicado continua com a chave até você publicar de novo.)")) return;
+            api("POST", "/api/ia/esquecer", { qual: "ia" }).then(function (r) { S.ia.cofre = r.cofre; status("Chave apagada do cofre."); redesenhar(); }).catch(falha);
+          } }),
+        ]),
+      ]),
+    ]);
+  }
+  function painelProvedor(id, redesenhar) {
+    var box = el("div", { class: "cartao" });
+    var msg = el("p", { class: "pequeno", role: "status" });
+    function salvar(dados) {
+      msg.className = "pequeno muted";
+      msg.textContent = "Testando a chave…";
+      api("POST", "/api/ia/chave", dados).then(function (r) {
+        S.ia.cofre = r.cofre;
+        S.iaTrocar = false;
+        status(r.mensagem);
+        redesenhar();
+      }).catch(function (err) { msg.className = "aviso erro"; msg.textContent = err.message; });
+    }
+    if (id === "openrouter") {
+      var esperando = el("div");
+      var entrar = el("button", { class: "btn pri grande", type: "button", text: "Entrar com OpenRouter" });
+      entrar.addEventListener("click", function () {
+        entrar.disabled = true;
+        api("POST", "/api/ia/openrouter").then(function (r) {
+          esperando.textContent = "";
+          add(esperando, el("p", { class: "aviso info" }, ["Abrimos o OpenRouter no navegador. Entre (pode ser com a conta Google) e clique em Authorize. Se a página não abriu, ", el("a", { href: r.conexao.url, target: "_blank", rel: "noopener", text: "clique aqui" }), "."]));
+          (function tick() {
+            api("GET", "/api/ia").then(function (x) {
+              S.ia = x;
+              var cx = x.conexao || {};
+              if (cx.status === "esperando") return setTimeout(tick, 1500);
+              entrar.disabled = false;
+              if (cx.status === "ok") { status(cx.mensagem || "OpenRouter conectado."); S.iaTrocar = false; return redesenhar(); }
+              esperando.textContent = "";
+              add(esperando, el("p", { class: "aviso erro", text: cx.erro || "Não deu certo. Tente de novo." }));
+            }).catch(function () { setTimeout(tick, 3000); });
+          })();
+        }).catch(function (err) { entrar.disabled = false; falha(err); });
+      });
+      add(box,
+        el("h3", { text: "Conectar o OpenRouter em 1 clique" }),
+        el("p", { class: "muted", text: "O instalador abre o login no navegador, como o Git faz com o GitHub. Você entra, clica em Authorize e a chave volta sozinha para cá. Conta nova funciona com modelos gratuitos (limite diário); com crédito, usa o Gemini e outros." }),
+        entrar,
+        esperando,
+      );
+    } else if (id === "gemini") {
+      var chave = campoSecreto("ia-chave", "Cole a chave aqui");
+      var testar = function () { salvar({ provedor: "gemini", chave: chave.value }); };
+      chave.addEventListener("keydown", function (ev) { if (ev.key === "Enter") testar(); });
+      add(box,
+        el("h3", { text: "Conectar o Google Gemini (gratuito)" }),
+        el("ol", { class: "passos-ia" }, [
+          el("li", {}, [el("span", { text: "Abra o Google AI Studio e entre com a sua conta Google." }), el("button", { class: "btn sec", type: "button", text: "Abrir o Google AI Studio", onclick: function () { abrirLink("gemini").catch(falha); } })]),
+          el("li", { text: "Na página das chaves, clique em copiar ao lado da chave (conta nova já ganha uma; senão, clique em Criar chave de API)." }),
+          el("li", {}, [el("span", { text: "Volte aqui e cole:" }), el("div", { class: "linha" }, [chave, el("button", { class: "btn sec", type: "button", text: "Colar", onclick: function () { colarEm(chave, testar); } }), el("button", { class: "btn pri", type: "button", text: "Testar e guardar", onclick: testar })])]),
+        ]),
+        msg,
+        el("p", { class: "muted pequeno", text: "A chave fica no cofre do seu usuário neste computador (fora do projeto) e, se você publicar, como segredo no seu serviço da Cloudflare." }),
+      );
+      return box;
+    } else {
+      var base = el("input", { type: "url", id: "ia-base", placeholder: "https://api.groq.com/openai/v1 ou http://localhost:11434/v1" });
+      var modelo = el("input", { type: "text", id: "ia-modelo", placeholder: "ex.: llama-3.3-70b-versatile, gpt-4o-mini, llama3.2" });
+      var chave2 = campoSecreto("ia-chave2", "Chave (vazio para Ollama/LM Studio locais)");
+      add(box,
+        el("h3", { text: "Conectar uma API compatível com OpenAI" }),
+        el("label", { class: "campo", for: "ia-base" }, ["Endereço da API", base]),
+        el("label", { class: "campo", for: "ia-modelo" }, ["Modelo", modelo]),
+        el("label", { class: "campo", for: "ia-chave2" }, ["Chave", chave2]),
+        el("div", { class: "linha" }, [el("button", { class: "btn pri", type: "button", text: "Testar e guardar", onclick: function () { salvar({ provedor: "openai", chave: chave2.value, baseUrl: base.value, modelo: modelo.value }); } })]),
+        msg,
+        el("p", { class: "muted pequeno", text: "Um modelo local (Ollama) só funciona no seu computador: para o site no ar, use um provedor na internet." }),
+      );
+    }
+    add(box, msg);
+    return box;
+  }
+
+  function painelCloudflare(alvo, depois) {
+    alvo.textContent = "";
+    var cf = S.ia && S.ia.cofre && S.ia.cofre.cloudflare;
+    if (cf && !S.cfTrocar) {
+      add(alvo, el("div", { class: "aviso ok" }, [
+        el("strong", { text: "Cloudflare conectada: " }),
+        "conta " + (cf.conta || cf.contaId) + (cf.subdominio ? " · endereços *." + cf.subdominio + ".workers.dev" : " · o endereço grátis (workers.dev) é criado na publicação") + ". ",
+        el("button", { class: "btn sec", type: "button", text: "Trocar a chave de publicação", onclick: function () { S.cfTrocar = true; painelCloudflare(alvo, depois); } }),
+      ]));
+      return atualizarBotoes();
+    }
+    var token = campoSecreto("cf-token", "Cole o token aqui");
+    var msg = el("p", { class: "pequeno", role: "status" });
+    function conectar() {
+      msg.className = "pequeno muted";
+      msg.textContent = "Conferindo o token na Cloudflare…";
+      api("POST", "/api/cloudflare", { token: token.value }).then(function (r) {
+        S.ia.cofre = r.cofre;
+        S.cfTrocar = false;
+        status("Cloudflare conectada: conta " + r.conta + ".");
+        depois ? depois() : painelCloudflare(alvo, depois);
+      }).catch(function (err) { msg.className = "aviso erro"; msg.textContent = err.message; });
+    }
+    token.addEventListener("keydown", function (ev) { if (ev.key === "Enter") conectar(); });
+    add(alvo,
+      el("h3", { text: "Conectar a Cloudflare (grátis, só na primeira vez)" }),
+      el("p", { class: "muted pequeno", text: "Plano gratuito: 100 mil pedidos por dia ao serviço. O widget e a base são arquivos estáticos e não contam. Não pede cartão." }),
+      el("ol", { class: "passos-ia" }, [
+        el("li", {}, [el("span", { text: "Crie uma conta grátis (e-mail e senha). Já tem? Pule este passo." }), el("button", { class: "btn sec", type: "button", text: "Criar conta na Cloudflare", onclick: function () { abrirLink("cloudflareCadastro").catch(falha); } })]),
+        el("li", {}, [el("span", { text: "Clique em Criar chave de publicação: a página abre com as permissões já marcadas. Lá, clique em Continue to summary e depois em Create Token." }), el("button", { class: "btn sec", type: "button", text: "Criar chave de publicação", onclick: function () { abrirLink("cloudflareToken").catch(falha); } })]),
+        el("li", {}, [el("span", { text: "Copie o token, volte aqui e cole:" }), el("div", { class: "linha" }, [token, el("button", { class: "btn sec", type: "button", text: "Colar", onclick: function () { colarEm(token, conectar); } }), el("button", { class: "btn pri", type: "button", text: "Conectar", onclick: conectar })])]),
+      ]),
+      msg,
+    );
+    atualizarBotoes();
+  }
+
+  // ---------- Versão 0.12: site já publicado ----------
+  function telaEndereco(c) {
+    var info = (S.estado && S.estado.info) || {};
+    var input = el("input", { type: "url", id: "site-url", placeholder: "https://minhaloja.com.br", value: info.modo === "url" ? info.site : S.urlSite || "", spellcheck: "false" });
+    var cb = el("input", { type: "checkbox", id: "site-autorizado" });
+    cb.checked = Boolean(S.autorizado);
+    cb.addEventListener("change", function () { S.autorizado = cb.checked; });
+    var botao = el("button", { class: "btn pri", type: "button", text: "Ler este site" });
+    var res = el("div");
+    function ler() {
+      S.urlSite = input.value.trim();
+      if (!S.urlSite) return status("Digite o endereço do site.", true);
+      if (!cb.checked) return status("Confirme que o site é seu ou que você tem autorização para lê-lo.", true);
+      botao.disabled = true;
+      status("Abrindo o site…");
+      api("POST", "/api/url", { url: S.urlSite, autorizado: true }).then(function (r) {
+        botao.disabled = false;
+        return recarregar().then(function () {
+          status("Site encontrado: " + r.info.site + ".");
+          liberar("raiox");
+          ir(idx("raiox"));
+        });
+      }).catch(function (err) { botao.disabled = false; falha(err); });
+    }
+    botao.addEventListener("click", ler);
+    input.addEventListener("keydown", function (ev) { if (ev.key === "Enter") ler(); });
+    add(c, el("div", { class: "cartao" }, [
+      el("label", { class: "campo", for: "site-url" }, ["Endereço do site", el("span", { class: "ajuda", text: "Pode ser o endereço da página inicial. Se o site manda para www (ou o contrário), o instalador segue sozinho." }), input]),
+      el("label", { class: "opcao" + (cb.checked ? " marcada" : ""), for: "site-autorizado" }, [cb, el("span", { class: "t", text: "O site é meu ou tenho autorização para lê-lo" }), el("span", { class: "d", text: "O instalador lê só páginas públicas, respeita o robots.txt, se identifica como agent-generator e faz pausas entre as páginas." })]),
+      el("div", { class: "linha" }, [botao]),
+      res,
+    ]));
+    if (info.modo === "url") add(c, el("p", { class: "aviso info", text: "Os arquivos deste site ficam em " + info.pasta + (info.jaPublicado ? ". Este site já tem um agente publicado em " + info.servico + ": o instalador atualiza o mesmo serviço." : ".") }));
+  }
+
+  function telaPublicar(c) {
+    var a = S.estado.analise;
+    var e = S.escolhas;
+    var ligadas = a.recursos.filter(function (r) { return r.disponivel && e.recursos[r.id]; }).map(function (r) { return r.titulo; });
+    var cofre = (S.ia && S.ia.cofre) || {};
+    var resumo = el("div", { class: "cartao" }, [
+      el("h3", { text: "O que vai ser publicado" }),
+      el("ul", { class: "checks" }, [
+        el("li", { text: "Agente: " + (e.agente.nome || a.agente.nome) + " · " + (TONS[e.agente.tom || a.agente.tom] || "") }),
+        el("li", { text: "Funcionalidades: " + (ligadas.join(", ") || "só as respostas básicas") }),
+        el("li", { class: e.ia.usar ? "" : "nao", text: e.ia.usar && cofre.ia ? "IA: " + nomeProvedor(cofre.ia.provedor) + " (" + cofre.ia.modelo + "), com a chave como segredo no serviço" : "IA: desligada (o agente responde só com a base)" }),
+        el("li", { text: "Base de conhecimento de " + a.origem + " (" + a.resumo.paginas + " páginas)" }),
+      ]),
+    ]);
+    var cf = el("div", { class: "cartao" });
+    var acao = el("div", { class: "cartao" });
+    add(c, resumo, cf, acao);
+    function desenharAcao() {
+      acao.textContent = "";
+      if (S.estado.instalacao) return mostrarPublicado(acao, S.estado.instalacao);
+      var pronto = Boolean(S.ia && S.ia.cofre && S.ia.cofre.cloudflare);
+      var botao = el("button", { class: "btn pri grande", type: "button", text: "Publicar", disabled: !pronto });
+      add(acao, el("h3", { text: "Publicar na sua conta da Cloudflare" }), el("p", { class: "muted", text: pronto ? "Leva menos de um minuto. Em conta nova, o endereço pode levar alguns minutos para responder." : "Conecte a Cloudflare acima para liberar o botão." }), botao);
+      botao.addEventListener("click", function () {
+        botao.disabled = true;
+        acao.textContent = "";
+        add(acao, el("h3", { text: "Publicando…" }));
+        var ver = progresso(acao);
+        api("POST", "/api/instalar", e)
+          .then(function () { atualizarBotoes(); return acompanhar(ver); })
+          .then(function () { return recarregar(); })
+          .then(function () { liberar("teste"); mostrarPublicado(acao, S.estado.instalacao); status("Publicado! Clique em Próximo para colocar no site."); return carregarIa().then(function () { painelCloudflare(cf, redesenhar); }); })
+          .catch(function (err) { falha(err); add(acao, el("p", { class: "aviso erro", text: err.message })); botao.disabled = false; add(acao, botao); });
+      });
+    }
+    function redesenhar() { painelCloudflare(cf, redesenhar); desenharAcao(); }
+    (S.ia ? Promise.resolve(S.ia) : carregarIa()).then(redesenhar).catch(falha);
+  }
+  function mostrarPublicado(alvo, r) {
+    alvo.textContent = "";
+    add(alvo,
+      el("h3", {}, ["Agente publicado ", el("span", { class: "selo ok", text: "Acerto " + (r.geral == null ? "-" : r.geral + "%") })]),
+      el("p", {}, ["Endereço do agente: ", el("a", { href: r.servico, target: "_blank", rel: "noopener", text: r.servico })]),
+      el("ul", { class: "checks" }, r.resumo.map(function (x) { return el("li", { text: x }); })),
+    );
+  }
+
+  function telaColocar(c) {
+    var area = el("div", { class: "conteudo" }, el("p", { class: "muted", text: "Preparando…" }));
+    add(c, area);
+    api("GET", "/api/colocar").then(function (k) {
+      area.textContent = "";
+      var guias = el("div", { class: "conteudo" });
+      k.guias.forEach(function (g) {
+        var corpo = [el("ol", {}, g.passos.map(function (p) { return el("li", { text: p }); }))];
+        if (g.id === "wordpress") corpo.push(el("div", { class: "linha" }, [el("a", { class: "btn pri", href: "/api/arquivo/agente-wordpress.zip?t=" + encodeURIComponent(TOKEN), download: "agente-wordpress.zip", text: "Baixar plugin para WordPress" })]));
+        if (g.id === "gtm") corpo.push(el("pre", { class: "codigo", text: k.loader }), el("div", { class: "linha" }, [botaoCopiar(k.loader, "Copiar o código do GTM")]));
+        var principal = g.id === k.plataforma;
+        add(guias, principal
+          ? el("div", { class: "cartao" }, [el("h3", {}, ["Passo a passo: " + g.nome + " ", el("span", { class: "selo ok", text: "detectado no seu site" })])].concat(corpo))
+          : el("details", { class: "cartao" }, [el("summary", { text: g.nome })].concat(corpo)));
+      });
+      var resultado = el("div");
+      function verificar() {
+        resultado.textContent = "";
+        add(resultado, el("p", { class: "muted", text: "Lendo a página publicada…" }));
+        api("POST", "/api/verificar").then(function (v) {
+          resultado.textContent = "";
+          add(resultado,
+            el("ul", { class: "checks" }, [
+              el("li", { class: v.pagina ? "" : "nao", text: v.pagina ? "A linha do agente está na página inicial do site." : "A linha do agente ainda não aparece na página inicial." }),
+              el("li", { class: v.servico ? "" : "nao", text: v.servico ? "O serviço do agente respondeu (IA: " + ((v.saude && v.saude.ia) || "nenhuma") + ")." : "O serviço do agente não respondeu." }),
+            ]),
+            v.avisos.length ? el("ul", {}, v.avisos.map(function (x) { return el("li", { class: "pequeno", text: x }); })) : null,
+            v.ok ? el("p", { class: "aviso ok", text: "Tudo certo! Abra o site e converse com o agente." }) : null,
+          );
+        }).catch(falha);
+      }
+      add(area,
+        el("div", { class: "cartao" }, [
+          el("h3", { text: "1 linha no seu site" }),
+          el("p", { class: "muted", text: "Cole antes de </body> (ou no campo de código do rodapé da sua plataforma). O agente aparece em todas as páginas que tiverem a linha." }),
+          el("pre", { class: "codigo", text: k.tags }),
+          el("div", { class: "linha" }, [botaoCopiar(k.tags, "Copiar a linha")]),
+          el("p", { class: "muted pequeno" }, ["Agente em ", el("a", { href: k.servico, target: "_blank", rel: "noopener", text: k.servico }), ". Se o site usa Content-Security-Policy, a verificação abaixo diz o que liberar."]),
+        ]),
+        guias,
+        el("div", { class: "cartao" }, [
+          el("h3", { text: "Conferir" }),
+          el("div", { class: "linha" }, [
+            el("button", { class: "btn sec", type: "button", text: "Ver prévia no meu site", onclick: function () { api("POST", "/api/previa").then(function (p) { status("Prévia aberta no navegador: " + p.url); }).catch(falha); } }),
+            el("button", { class: "btn pri", type: "button", text: "Verificar instalação", onclick: verificar }),
+          ]),
+          resultado,
+        ]),
+        el("details", { class: "cartao" }, [
+          el("summary", { text: "Remover o agente do site" }),
+          el("p", { class: "muted pequeno", text: "Apague a linha do site (ou desative o plugin) e clique abaixo para apagar o serviço na Cloudflare." }),
+          el("button", { class: "btn perigo", type: "button", text: "Remover o agente (apagar o serviço)", onclick: function () {
+            if (!confirm("Apagar o serviço do agente na Cloudflare? O botão do agente some do site (se a linha ainda estiver lá, ela só deixa de funcionar).")) return;
+            api("POST", "/api/servico/remover").then(function () { status("Serviço apagado. Lembre de tirar a linha do site."); return recarregar(); }).catch(falha);
+          } }),
+        ]),
+      );
+    }).catch(function (err) { area.textContent = ""; add(area, el("p", { class: "aviso erro", text: err.message })); });
+  }
+
   function fechar() {
     if (!confirm("Fechar o instalador? O agente continua instalado no site. Para a etapa 2 depois, abra o executável de novo.")) return;
     api("POST", "/api/sair").then(function () {
@@ -809,10 +1331,16 @@
 
   recarregar().then(function (e) {
     // Retoma onde parou (ex.: a janela foi recarregada).
-    if (e.instalacao) S.max = 7;
-    else if (e.analise) S.max = 5;
-    else if (e.info) S.max = 1;
-    if (e.sessao && e.sessao.status === "rodando") { S.max = 7; ir(7); return; }
+    if (e.modo === "url") {
+      usarFluxo("site");
+      S.max = e.instalacao ? idx("teste") : e.analise ? idx("publicar") : e.info ? idx("raiox") : 0;
+      ir(0);
+      return;
+    }
+    if (e.instalacao) S.max = idx("etapa2");
+    else if (e.analise) S.max = idx("instalacao");
+    else if (e.info) S.max = idx("pasta");
+    if (e.sessao && e.sessao.status === "rodando") { S.max = idx("etapa2"); ir(S.max); return; }
     ir(0);
   }).catch(falha);
 })();
